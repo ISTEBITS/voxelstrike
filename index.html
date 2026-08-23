@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VOXELSTRIKE 3D — Tactical FPS & Online PvP</title>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #120b06;
+      overflow: hidden;
+      font-family: 'VT323', 'Courier New', monospace;
+      user-select: none;
+      image-rendering: pixelated;
+    }
+    #canvas { display: block; width: 100vw; height: 100vh; }
+
+    /* HUD Base */
+    #hud {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 10;
+      font-family: 'VT323', monospace;
+    }
+
+    /* Crosshair */
+    #crosshair {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 24px; height: 24px;
+    }
+    #crosshair::before, #crosshair::after {
+      content: ''; position: absolute; background: #ffffff;
+      box-shadow: 0 0 4px #000;
+    }
+    #crosshair::before { width: 3px; height: 100%; left: 50%; transform: translateX(-50%); }
+    #crosshair::after  { width: 100%; height: 3px; top: 50%; transform: translateY(-50%); }
+    .crosshair-dot {
+      position: absolute; top: 50%; left: 50%;
+      width: 4px; height: 4px; background: #ff2222;
+      border: 1px solid #000;
+      transform: translate(-50%, -50%);
+    }
+
+    /* Health Bar (Minecraft XP/Health Style) */
+    #health-container {
+      position: absolute; bottom: 30px; left: 30px;
+    }
+    #health-label {
+      color: #aaaaaa; font-size: 16px; letter-spacing: 2px;
+      text-transform: uppercase; margin-bottom: 4px;
+      text-shadow: 2px 2px 0px #000000;
+    }
+    #health-bar-bg {
+      width: 220px; height: 16px; background: #000000;
+      border: 2px solid #373737;
+      box-shadow: inset 2px 2px 0px #111, 0 0 0 2px #000;
+    }
+    #health-bar {
+      height: 100%; width: 100%;
+      background: linear-gradient(180deg, #85ff55 0%, #55ff55 50%, #00aa00 100%);
+      box-shadow: inset 0px 2px 0px #aaff88;
+      transition: width 0.2s ease, background 0.3s ease;
+    }
+    #health-value {
+      color: #ffffff; font-size: 20px; margin-top: 4px; letter-spacing: 1px;
+      text-shadow: 2px 2px 0px #000000;
+    }
+
+    /* Ammo Display */
+    #ammo-container {
+      position: absolute; bottom: 30px; right: 30px; text-align: right;
+    }
+    #ammo-label {
+      color: #aaaaaa; font-size: 16px; letter-spacing: 2px; text-transform: uppercase;
+      text-shadow: 2px 2px 0px #000;
+    }
+    #weapon-name {
+      color: #ffaa00; font-size: 20px; letter-spacing: 2px;
+      text-transform: uppercase; margin-bottom: 2px;
+      text-shadow: 2px 2px 0px #000;
+    }
+    #ammo-value {
+      color: #ffffff; font-size: 48px; font-weight: bold; line-height: 1;
+      letter-spacing: 2px; text-shadow: 3px 3px 0px #000;
+    }
+    #ammo-reserve { color: #aaaaaa; font-size: 20px; text-shadow: 2px 2px 0px #000; }
+
+    /* Weapon slots (Minecraft Hotbar Slot Aesthetic) */
+    #weapon-slots {
+      position: absolute; bottom: 125px; right: 30px;
+      display: flex; flex-direction: column; gap: 6px; align-items: flex-end;
+    }
+    .weapon-slot {
+      width: 210px;
+      background: #8b8b8b;
+      border: 2px solid #000000;
+      box-shadow: inset 2px 2px 0px #373737, inset -2px -2px 0px #ffffff;
+      padding: 6px 12px;
+      color: #373737; font-size: 18px; letter-spacing: 1px;
+      text-transform: uppercase;
+      text-shadow: 1px 1px 0px #a8a8a8;
+      display: flex; justify-content: space-between; align-items: center;
+      transition: all 0.1s ease;
+    }
+    .weapon-slot .slot-key {
+      color: #111111; font-weight: bold;
+    }
+    .weapon-slot.active {
+      background: #5c4033;
+      color: #fcfc54;
+      box-shadow: inset 2px 2px 0px #a88050, inset -2px -2px 0px #1e130b, 0 0 0 2px #ffaa00;
+      text-shadow: 2px 2px 0px #000000;
+    }
+    .weapon-slot.active .slot-key {
+      color: #ffaa00;
+    }
+
+    /* Wave / Mode Container */
+    #wave-container {
+      position: absolute; top: 25px; left: 50%; transform: translateX(-50%);
+      text-align: center;
+    }
+    #wave-label { color: #aaaaaa; font-size: 16px; letter-spacing: 2px; text-transform: uppercase; text-shadow: 2px 2px 0px #000; }
+    #wave-number { color: #fcfc54; font-size: 38px; font-weight: bold; letter-spacing: 3px; text-shadow: 3px 3px 0px #000; }
+    #enemy-count { color: #ff5555; font-size: 20px; letter-spacing: 2px; text-shadow: 2px 2px 0px #000; }
+
+    /* Score Container */
+    #score-container {
+      position: absolute; top: 25px; right: 30px; text-align: right;
+    }
+    #score-label { color: #aaaaaa; font-size: 16px; letter-spacing: 2px; text-transform: uppercase; text-shadow: 2px 2px 0px #000; }
+    #score-value { color: #55ffff; font-size: 32px; font-weight: bold; text-shadow: 3px 3px 0px #000; }
+
+    /* Hit Indicator */
+    #hit-indicator {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 60px; height: 60px;
+      border: 3px solid #ff5555; border-radius: 50%;
+      opacity: 0; transition: opacity 0.1s;
+    }
+
+    /* Damage Vignette */
+    #damage-vignette {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: radial-gradient(ellipse at center, transparent 60%, rgba(220,38,38,0.5) 100%);
+      opacity: 0; transition: opacity 0.3s;
+    }
+
+    /* Sprint Indicator */
+    #sprint-indicator {
+      position: absolute; bottom: 80px; left: 30px;
+      color: #55ffff; font-size: 18px; letter-spacing: 2px;
+      text-transform: uppercase; opacity: 0; transition: opacity 0.2s;
+      text-shadow: 2px 2px 0px #000;
+    }
+
+    /* Wave Announcement Banner */
+    #wave-announce {
+      position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
+      text-align: center; opacity: 0; pointer-events: none;
+      transition: opacity 0.5s;
+    }
+    #wave-announce-text {
+      color: #fcfc54; font-size: 64px; font-weight: bold;
+      letter-spacing: 6px; text-shadow: 4px 4px 0px #000;
+    }
+    #wave-announce-sub {
+      color: #ffaa00; font-size: 24px; letter-spacing: 4px; margin-top: 5px;
+      text-shadow: 2px 2px 0px #000;
+    }
+
+    /* Reload Indicator */
+    #reload-bar-container {
+      position: absolute; bottom: 80px; right: 30px;
+      text-align: right; opacity: 0; transition: opacity 0.2s;
+    }
+    #reload-label { color: #ffaa00; font-size: 16px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; text-shadow: 2px 2px 0px #000; }
+    #reload-bar-bg { width: 160px; height: 8px; background: #000; border: 1px solid #373737; margin-left: auto; }
+    #reload-bar { height: 100%; width: 0%; background: #ffaa00; transition: width 0.05s linear; }
+
+    /* Overlay Screens (Minecraft Dirt Tile Background) */
+    .overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 100;
+      background-color: #1a110a;
+      background-image:
+        radial-gradient(circle at center, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.92) 100%),
+        repeating-conic-gradient(#2c1b12 0% 25%, #3b271d 0% 50%);
+      background-size: 100% 100%, 32px 32px;
+      image-rendering: pixelated;
+    }
+
+    .overlay-title {
+      font-family: 'Press Start 2P', 'VT323', monospace;
+      font-size: 38px; font-weight: bold; letter-spacing: 4px;
+      text-transform: uppercase; margin-bottom: 12px; text-align: center;
+      color: #fcfc54;
+      text-shadow: 4px 4px 0px #3f3f00, 0 0 20px rgba(252, 252, 84, 0.4);
+    }
+    .overlay-sub {
+      color: #aaaaaa; font-size: 20px; letter-spacing: 2px; margin-bottom: 30px; text-align: center;
+      text-shadow: 2px 2px 0px #000;
+    }
+
+    /* Minecraft 3D Beveled Buttons */
+    .overlay-btn {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 28px;
+      background-color: #707070;
+      color: #e0e0e0;
+      font-family: 'VT323', monospace;
+      font-size: 22px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      text-shadow: 2px 2px 0px #000000;
+      cursor: pointer;
+      user-select: none;
+      border: none;
+      outline: none;
+
+      box-shadow:
+        inset -3px -5px 0px 0px #2c2c2c,
+        inset 3px 3px 0px 0px #a8a8a8,
+        inset -6px -8px 0px 0px #555555,
+        inset 6px 6px 0px 0px #ffffff,
+        0px 0px 0px 3px #000000;
+
+      transition: all 0.08s ease;
+      margin: 8px;
+    }
+
+    .overlay-btn:hover {
+      background-color: #6c79d4;
+      color: #ffffa0;
+      text-shadow: 2px 2px 0px #2a2a00;
+      box-shadow:
+        inset -3px -5px 0px 0px #2a3375,
+        inset 3px 3px 0px 0px #9da8ff,
+        inset -6px -8px 0px 0px #424e9e,
+        inset 6px 6px 0px 0px #d0d7ff,
+        0px 0px 0px 3px #000000;
+    }
+
+    .overlay-btn:active {
+      box-shadow:
+        inset 3px 5px 0px 0px #2c2c2c,
+        inset -3px -3px 0px 0px #a8a8a8,
+        inset 6px 8px 0px 0px #555555,
+        inset -6px -6px 0px 0px #ffffff,
+        0px 0px 0px 3px #000000;
+      padding-top: 14px;
+      padding-bottom: 10px;
+    }
+
+    .btn-green { background-color: #38631b !important; color: #aaff88 !important; }
+    .btn-green:hover { background-color: #4a7c28 !important; color: #ffffff !important; }
+
+    .btn-blue { background-color: #1a4971 !important; color: #88ddff !important; }
+    .btn-blue:hover { background-color: #266498 !important; color: #ffffff !important; }
+
+    .btn-red { background-color: #6b1d1d !important; color: #ffaaaa !important; }
+    .btn-red:hover { background-color: #8c2626 !important; color: #ffffff !important; }
+
+    #start-screen .controls-info {
+      color: #aaaaaa; font-size: 16px; letter-spacing: 1px; line-height: 1.8;
+      text-align: center; border-top: 2px solid #5c4033; padding-top: 20px; margin-top: 20px;
+      text-shadow: 1px 1px 0px #000;
+    }
+
+    /* Mode Selection Card */
+    .mode-buttons {
+      display: flex; gap: 15px; margin-bottom: 25px; flex-wrap: wrap; justify-content: center;
+    }
+
+    #gameover-screen { display: none; }
+    #gameover-screen .overlay-title { color: #ff5555; text-shadow: 4px 4px 0px #550000; }
+    #gameover-stats { color: #aaaaaa; font-size: 22px; letter-spacing: 2px; line-height: 2.0; text-align: center; margin-bottom: 30px; text-shadow: 2px 2px 0px #000; }
+    #gameover-stats span { color: #55ffff; font-weight: bold; }
+
+    #paused-screen { display: none; }
+    #paused-screen .overlay-title { color: #55ffff; text-shadow: 4px 4px 0px #005555; }
+
+    /* Minecraft Window Container */
+    #lobby-screen { display: none; }
+    .lobby-box {
+      background: #c6c6c6;
+      border: 4px solid #000000;
+      box-shadow:
+        inset -5px -5px 0px #555555,
+        inset 5px 5px 0px #ffffff,
+        0 0 50px rgba(0,0,0,0.9);
+      width: 580px; max-width: 94vw; max-height: 88vh; overflow-y: auto; padding: 22px;
+      color: #373737;
+      font-family: 'VT323', monospace;
+    }
+
+    .mc-avatar-icon {
+      width: 18px; height: 18px; background: #fbbf24; border: 2px solid #000;
+      display: inline-block; box-shadow: inset 1px 1px 0 #fff;
+    }
+    .team-badge {
+      padding: 1px 5px; font-size: 14px; border: 1px solid #000; font-weight: bold;
+    }
+    .team-badge.red { background: #ef4444; color: #fff; }
+    .team-badge.blue { background: #3b82f6; color: #fff; }
+    .team-badge.ffa { background: #eab308; color: #000; }
+
+    /* Minecraft Tab Styling */
+    .lobby-tabs {
+      display: flex; border-bottom: 3px solid #373737; margin-bottom: 20px; gap: 4px;
+    }
+    .lobby-tab {
+      flex: 1; text-align: center; padding: 10px; cursor: pointer;
+      background: #8b8b8b; color: #373737; font-size: 20px; letter-spacing: 1px;
+      text-transform: uppercase;
+      box-shadow: inset 2px 2px 0px #ffffff, inset -2px -2px 0px #373737, 0px -2px 0px #000;
+      transition: all 0.1s;
+    }
+    .lobby-tab.active {
+      background: #c6c6c6; color: #000000; font-weight: bold;
+      box-shadow: inset 2px 2px 0px #ffffff, inset -2px 0px 0px #c6c6c6;
+    }
+
+    .form-group { margin-bottom: 15px; text-align: left; }
+    .form-group label {
+      display: block; color: #404040; font-size: 18px; letter-spacing: 1px;
+      text-transform: uppercase; margin-bottom: 4px; font-weight: bold;
+      text-shadow: 1px 1px 0px #ffffff;
+    }
+
+    /* Inset Minecraft Input Box */
+    .form-control {
+      width: 100%; padding: 10px 14px;
+      background: #212121;
+      border: 2px solid #000000;
+      box-shadow: inset 2px 2px 0px #000000, inset -2px -2px 0px #444444;
+      color: #55ffff;
+      font-family: 'VT323', monospace; font-size: 22px; outline: none;
+    }
+    .form-control:focus {
+      border-color: #ffaa00;
+      box-shadow: inset 2px 2px 0px #000000, 0 0 0 2px #ffaa00;
+    }
+
+    .alert-banner {
+      color: #ff5555; font-size: 18px; margin-top: 10px; text-align: center;
+      min-height: 24px; letter-spacing: 1px; text-shadow: 1px 1px 0px #000;
+    }
+
+    .roster-list {
+      background: #212121; border: 2px solid #000;
+      box-shadow: inset 2px 2px 0px #000;
+      padding: 10px; margin: 15px 0; max-height: 150px; overflow-y: auto;
+    }
+    .roster-item {
+      display: flex; justify-content: space-between; align-items: center; padding: 6px 8px;
+      color: #ffffff; font-size: 20px; border-bottom: 1px solid #373737;
+    }
+    .roster-item:last-child { border-bottom: none; }
+    .roster-item .host-badge { color: #ffaa00; font-size: 16px; margin-left: 6px; }
+
+    /* PvP Respawn Overlay */
+    #pvp-respawn-screen {
+      display: none; background: rgba(180, 20, 20, 0.5); pointer-events: none;
+    }
+    #respawn-killer { color: #ffffff; font-size: 32px; font-weight: bold; margin-bottom: 10px; text-shadow: 3px 3px 0px #000; }
+    #respawn-timer { color: #fcfc54; font-size: 60px; font-weight: bold; margin-top: 10px; text-shadow: 4px 4px 0px #000; }
+
+    /* PvP Leaderboard / Scoreboard Overlay (Minecraft Window) */
+    #pvp-scoreboard {
+      display: none; position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: #c6c6c6; border: 3px solid #000000;
+      box-shadow: inset -4px -4px 0px #555555, inset 4px 4px 0px #ffffff, 0 0 50px rgba(0,0,0,0.9);
+      padding: 24px 30px; z-index: 120;
+      width: 560px; max-width: 94vw;
+      font-family: 'VT323', monospace;
+      pointer-events: none;
+    }
+    .sb-title { color: #212121; font-size: 28px; font-weight: bold; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 15px; text-align: center; text-shadow: 1px 1px 0px #ffffff; }
+    .sb-table { width: 100%; border-collapse: collapse; text-align: left; }
+    .sb-table th { color: #404040; font-size: 18px; letter-spacing: 1px; text-transform: uppercase; padding: 8px; border-bottom: 2px solid #373737; }
+    .sb-table td { color: #000000; font-size: 20px; padding: 8px; border-bottom: 1px solid #8b8b8b; }
+    .sb-table tr.me { background: rgba(255, 250, 205, 0.7); font-weight: bold; }
+
+    /* PvP Victory Screen */
+    #pvp-victory-screen { display: none; }
+    #pvp-winner-name { color: #55ff55; font-size: 42px; font-weight: bold; letter-spacing: 4px; margin-bottom: 20px; text-shadow: 3px 3px 0px #000; }
+
+    /* Kill Notification Feed */
+    #kill-feed {
+      position: absolute; top: 100px; right: 30px;
+      display: flex; flex-direction: column; gap: 6px; align-items: flex-end;
+    }
+    .kill-notification {
+      color: #ff5555; font-size: 18px; letter-spacing: 1px;
+      background: rgba(0,0,0,0.7); padding: 6px 12px;
+      border-left: 3px solid #ff5555;
+      text-shadow: 1px 1px 0px #000;
+      animation: fadeKill 2.5s forwards;
+    }
+    @keyframes fadeKill { 0%{opacity:1} 75%{opacity:1} 100%{opacity:0} }
+
+    /* FPS Counter */
+    #fps { position: absolute; top: 25px; left: 30px; color: #aaaaaa; font-size: 18px; text-shadow: 2px 2px 0px #000; }
+
+    /* Minecraft-Style Loading Screen */
+    #minecraft-loading-screen {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background-color: #2b170c;
+      background-image:
+        radial-gradient(circle at center, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.85) 100%),
+        repeating-conic-gradient(#2c1b12 0% 25%, #3b271d 0% 50%);
+      background-size: 100% 100%, 32px 32px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 250;
+      image-rendering: pixelated;
+      transition: opacity 0.5s ease;
+    }
+    .mc-logo-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: clamp(24px, 5vw, 42px);
+      color: #fcfc54;
+      text-shadow: 4px 4px 0px #3f3f00, 0 0 25px rgba(252, 252, 84, 0.5);
+      letter-spacing: 3px; margin-bottom: 8px; text-align: center;
+    }
+    .mc-logo-sub {
+      color: #ffaa00; font-size: 20px; letter-spacing: 2px; text-shadow: 2px 2px 0px #000;
+      text-align: center; margin-bottom: 40px;
+    }
+    .mc-loading-box {
+      width: 420px; max-width: 85vw; text-align: center;
+    }
+    .mc-loading-status {
+      color: #e0e0e0; font-size: 22px; letter-spacing: 2px; text-shadow: 2px 2px 0px #000;
+      margin-bottom: 10px;
+    }
+    .mc-progress-border {
+      width: 100%; height: 26px; background: #1c1917;
+      border: 3px solid #000000;
+      box-shadow: inset 2px 2px 0px #000, inset -2px -2px 0px #444, 0 0 0 2px #555;
+      padding: 3px; position: relative;
+    }
+    .mc-progress-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(180deg, #4ade80 0%, #22c55e 50%, #15803d 100%);
+      box-shadow: inset 0px 2px 0px #86efac;
+      transition: width 0.1s linear;
+    }
+    .mc-loading-percent {
+      color: #55ffff; font-size: 24px; font-weight: bold; margin-top: 10px;
+      text-shadow: 2px 2px 0px #000;
+    }
+    .mc-splash-text {
+      color: #fef08a; font-size: 22px; margin-top: 25px;
+      text-shadow: 2px 2px 0px #000; transform: rotate(-4deg);
+      animation: pulseSplash 1.2s infinite alternate ease-in-out;
+    }
+    @keyframes pulseSplash { 0% { transform: scale(1.0) rotate(-4deg); } 100% { transform: scale(1.08) rotate(-4deg); } }
+
+    /* Portrait Device Warning Overlay */
+    #portrait-warning-overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: #1a110a; z-index: 300;
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 20px;
+    }
+    .rotate-device-icon {
+      font-size: 70px; color: #ffaa00; animation: rotatePhone 2.0s infinite ease-in-out;
+    }
+    @keyframes rotatePhone { 0%, 20% { transform: rotate(0deg); } 50%, 70% { transform: rotate(90deg); } 100% { transform: rotate(0deg); } }
+
+    /* On-Screen Mobile Virtual Touch Controls */
+    #mobile-touch-controls {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 20; display: none;
+    }
+    #touch-joystick-zone {
+      position: absolute; bottom: 20px; left: 20px;
+      width: 140px; height: 140px; pointer-events: auto; touch-action: none;
+    }
+    #touch-joystick-base {
+      width: 120px; height: 120px; border-radius: 50%;
+      background: rgba(0, 0, 0, 0.45); border: 3px solid rgba(255, 255, 255, 0.3);
+      position: relative; margin: 10px;
+    }
+    #touch-joystick-stick {
+      width: 50px; height: 50px; border-radius: 50%;
+      background: rgba(252, 252, 84, 0.8); border: 2px solid #ffffff;
+      position: absolute; top: 33px; left: 33px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    }
+    #touch-look-zone {
+      position: absolute; top: 0; right: 0; width: 55vw; height: 75vh;
+      pointer-events: auto; touch-action: none;
+    }
+    #touch-buttons-group {
+      position: absolute; bottom: 25px; right: 25px;
+      display: flex; flex-direction: column; gap: 10px; align-items: flex-end;
+      pointer-events: auto;
+    }
+    .touch-btn {
+      padding: 12px 20px;
+      background-color: #5c4033; color: #ffffff;
+      font-family: 'VT323', monospace; font-size: 20px; letter-spacing: 1px;
+      border: 2px solid #000000;
+      box-shadow: inset 2px 2px 0px #8b6914, inset -2px -2px 0px #2a1a0a, 0 0 0 2px #000;
+      cursor: pointer; touch-action: manipulation; user-select: none;
+    }
+    .touch-btn:active {
+      background-color: #ffaa00; color: #000000; font-weight: bold;
+    }
+    .btn-fire {
+      background-color: #b91c1c !important; color: #ffffff !important;
+      font-size: 24px !important; padding: 16px 26px !important;
+      box-shadow: inset 2px 2px 0px #ef4444, inset -2px -2px 0px #450a0a, 0 0 0 2px #ffaa00 !important;
+    }
+
+    /* Responsive Adjustments for Mobile Screens */
+    @media (max-width: 768px) {
+      .overlay-title { font-size: 26px; }
+      .overlay-sub { font-size: 15px; margin-bottom: 16px; }
+      .overlay-btn { padding: 10px 18px; font-size: 18px; }
+      .lobby-box { padding: 16px; width: 96vw; max-height: 85vh; }
+      .form-control { padding: 8px 10px; font-size: 19px; }
+      .form-group label { font-size: 16px; }
+      #health-container { bottom: 15px; left: 15px; }
+      #ammo-container { bottom: 15px; right: 15px; }
+      #weapon-slots { bottom: 95px; right: 15px; }
+      .weapon-slot { width: 150px; font-size: 14px; padding: 4px 8px; }
+      #score-container { top: 15px; right: 15px; }
+      #wave-container { top: 15px; }
+      #fps { top: 15px; left: 15px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Minecraft Voxel Loading Screen -->
+<div id="minecraft-loading-screen" class="overlay">
+  <div class="mc-logo-box">
+    <div class="mc-logo-title">VOXELSTRIKE 3D</div>
+    <div class="mc-logo-sub">TACTICAL EDITION</div>
+  </div>
+
+  <div class="mc-loading-box">
+    <div id="mc-loading-status" class="mc-loading-status">Generating Terrain & Chunks...</div>
+    <div class="mc-progress-border">
+      <div id="mc-progress-fill" class="mc-progress-fill"></div>
+    </div>
+    <div id="mc-loading-percent" class="mc-loading-percent">0%</div>
+  </div>
+
+  <div class="mc-splash-text" id="mc-splash-text">★ 100% Voxel Action! ★</div>
+</div>
+
+<!-- Mobile Portrait Rotate Device Warning Overlay -->
+<div id="portrait-warning-overlay" class="overlay">
+  <div class="rotate-device-icon">📱 ⟳</div>
+  <div class="overlay-title" style="color: #ffaa00; font-size: 28px; margin-top: 15px;">ROTATE YOUR DEVICE</div>
+  <div class="overlay-sub" style="font-size: 18px; max-width: 80vw; line-height: 1.5;">
+    PLEASE ROTATE TO LANDSCAPE MODE FOR THE BEST MINECRAFT FPS EXPERIENCE
+  </div>
+</div>
+
+<!-- On-Screen Mobile Virtual Touch Controls -->
+<div id="mobile-touch-controls">
+  <!-- Left Analog D-Pad Joystick -->
+  <div id="touch-joystick-zone">
+    <div id="touch-joystick-base">
+      <div id="touch-joystick-stick"></div>
+    </div>
+  </div>
+
+  <!-- Right Touch Look Area -->
+  <div id="touch-look-zone"></div>
+
+  <!-- Action Buttons -->
+  <div id="touch-buttons-group">
+    <button id="btn-touch-shoot" class="touch-btn btn-fire">💥 SHOOT</button>
+    <button id="btn-touch-jump" class="touch-btn">⬆ JUMP</button>
+    <button id="btn-touch-reload" class="touch-btn">🔄 RELOAD</button>
+    <button id="btn-touch-weapon" class="touch-btn">🔫 WEAPON</button>
+  </div>
+</div>
+
+<!-- Start Screen -->
+<div id="start-screen" class="overlay">
+  <div class="overlay-title">VOXELSTRIKE 3D</div>
+  <div class="overlay-sub">TACTICAL FPS & PvP DEATHMATCH</div>
+
+  <div class="mode-buttons">
+    <button class="overlay-btn btn-green" onclick="startSoloGame()">
+      <span>🧟 SOLO ZOMBIE WAVE</span>
+    </button>
+    <button class="overlay-btn btn-blue" onclick="openMultiplayerLobby()">
+      <span>⚔️ ONLINE PvP DEATHMATCH</span>
+    </button>
+  </div>
+
+  <div class="controls-info">
+    WASD — MOVE &nbsp;|&nbsp; MOUSE — AIM &nbsp;|&nbsp; LMB — SHOOT &nbsp;|&nbsp; RMB — ADS &nbsp;|&nbsp; R — RELOAD<br>
+    SHIFT — SPRINT &nbsp;|&nbsp; SPACE — JUMP &nbsp;|&nbsp; TAB — SCOREBOARD &nbsp;|&nbsp; ESC — PAUSE<br>
+    1 — M4 ASSAULT &nbsp;|&nbsp; 2 — MP5 SMG &nbsp;|&nbsp; 3 — SPAS-12 &nbsp;|&nbsp; 4 — AWP SNIPER
+  </div>
+</div>
+
+<!-- Multiplayer Lobby Screen -->
+<div id="lobby-screen" class="overlay">
+  <div class="overlay-title" style="color: #55ffff; font-size: 34px; text-shadow: 3px 3px 0px #005555;">ONLINE PvP LOBBY</div>
+  <div class="overlay-sub">CREATE OR JOIN TEAM ROOM WITH PASSWORD</div>
+
+  <div class="lobby-box">
+    <!-- Lobby Mode Tabs -->
+    <div class="lobby-tabs" id="lobby-tabs-nav">
+      <div class="lobby-tab active" onclick="switchLobbyTab('create')">CREATE ROOM</div>
+      <div class="lobby-tab" onclick="switchLobbyTab('join')">JOIN ROOM</div>
+    </div>
+
+    <!-- Create Room Form -->
+    <div id="tab-create">
+      <div class="form-group">
+        <label>Player Name</label>
+        <input type="text" id="create-player-name" class="form-control" placeholder="Player 1" value="Player 1" maxlength="12" />
+      </div>
+      <div class="form-group">
+        <label>Room ID (Unique Name)</label>
+        <input type="text" id="create-room-id" class="form-control" placeholder="e.g. deathmatch1" value="match123" maxlength="16" />
+      </div>
+      <div class="form-group">
+        <label>Room Password</label>
+        <input type="password" id="create-room-pass" class="form-control" placeholder="Set Password" value="1234" maxlength="16" />
+      </div>
+      <div class="form-group">
+        <label>Match Type & Teams</label>
+        <select id="create-game-team" class="form-control">
+          <option value="ffa" selected>⚔️ FREE FOR ALL (SOLO DEATHMATCH)</option>
+          <option value="red_vs_blue">🔴 RED VS BLUE (TEAM DEATHMATCH)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Target Kills To Win</label>
+        <select id="create-target-kills" class="form-control">
+          <option value="10">10 Kills</option>
+          <option value="15" selected>15 Kills</option>
+          <option value="25">25 Kills</option>
+        </select>
+      </div>
+      <button class="overlay-btn btn-blue" style="width: 100%; margin: 10px 0 0 0;" onclick="createPvPRoom()">
+        <span>CREATE ROOM HOST</span>
+      </button>
+    </div>
+
+    <!-- Join Room Form -->
+    <div id="tab-join" style="display:none;">
+      <div class="form-group">
+        <label>Player Name</label>
+        <input type="text" id="join-player-name" class="form-control" placeholder="Player 2" value="Player 2" maxlength="12" />
+      </div>
+      <div class="form-group">
+        <label>Room ID To Join</label>
+        <input type="text" id="join-room-id" class="form-control" placeholder="e.g. match123" value="match123" maxlength="16" />
+      </div>
+      <div class="form-group">
+        <label>Room Password</label>
+        <input type="password" id="join-room-pass" class="form-control" placeholder="Enter Password" value="1234" maxlength="16" />
+      </div>
+      <button class="overlay-btn btn-green" style="width: 100%; margin: 10px 0 0 0;" onclick="joinPvPRoom()">
+        <span>JOIN ROOM</span>
+      </button>
+    </div>
+
+    <!-- Room Waiting Lobby (Active Connection) -->
+    <div id="tab-waiting" style="display:none;">
+      <div style="color: #404040; font-size: 18px; text-transform: uppercase; font-weight: bold; text-shadow: 1px 1px 0px #fff;">
+        ROOM ID: <span id="waiting-room-id" style="color: #000; font-weight: bold;">--</span>
+      </div>
+      <div style="color: #373737; font-size: 16px; margin-top: 4px;">
+        STATUS: <span id="waiting-status" style="color: #38631b; font-weight: bold;">CONNECTED</span>
+      </div>
+
+      <div id="min-player-req-msg" style="color: #ef4444; font-size: 18px; text-shadow: 1px 1px 0px #000; margin: 8px 0; text-align: center; font-weight: bold;">
+        ⚠️ AT LEAST 2 PLAYERS REQUIRED TO START PvP MATCH (CURRENT: 1/16)
+      </div>
+
+      <div class="roster-list" id="roster-list">
+        <!-- Roster items injected dynamically -->
+      </div>
+
+      <button id="start-match-btn" class="overlay-btn btn-green" style="width: 100%; margin: 5px 0 0 0; display: none;" onclick="startPvPMatch()">
+        <span>▶ START PvP MATCH</span>
+      </button>
+      <div id="waiting-host-msg" style="color: #404040; font-size: 16px; margin-top: 8px; text-align: center;">
+        Waiting for host to launch the match...
+      </div>
+    </div>
+
+    <div class="alert-banner" id="lobby-alert"></div>
+  </div>
+
+  <button class="overlay-btn btn-red" style="margin-top: 20px;" onclick="backToMainMenu()">
+    <span>← BACK TO MAIN MENU</span>
+  </button>
+</div>
+
+<!-- PvP Respawn Overlay Screen -->
+<div id="pvp-respawn-screen" class="overlay">
+  <div style="color: #ff5555; font-size: 24px; letter-spacing: 4px; text-shadow: 2px 2px 0px #000;">ELIMINATED</div>
+  <div id="respawn-killer">KILLED BY PLAYER</div>
+  <div style="color: #aaaaaa; font-size: 18px; letter-spacing: 2px; text-shadow: 1px 1px 0px #000;">RESPAWNING IN</div>
+  <div id="respawn-timer">3</div>
+</div>
+
+<!-- PvP Scoreboard Modal (Hold Tab) -->
+<div id="pvp-scoreboard">
+  <div class="sb-title">PVP MATCH SCOREBOARD</div>
+  <table class="sb-table">
+    <thead>
+      <tr>
+        <th>PLAYER</th>
+        <th style="text-align:center;">KILLS</th>
+        <th style="text-align:center;">DEATHS</th>
+        <th style="text-align:right;">SCORE</th>
+      </tr>
+    </thead>
+    <tbody id="sb-body">
+      <!-- Dynamically filled -->
+    </tbody>
+  </table>
+</div>
+
+<!-- PvP Victory Screen -->
+<div id="pvp-victory-screen" class="overlay">
+  <div class="overlay-title" style="color: #55ff55; text-shadow: 4px 4px 0px #005500;">MATCH COMPLETE</div>
+  <div style="color: #aaaaaa; font-size: 20px; letter-spacing: 3px; margin-bottom: 5px; text-shadow: 2px 2px 0px #000;">WINNER</div>
+  <div id="pvp-winner-name">PLAYER 1</div>
+  <button class="overlay-btn btn-green" onclick="restartGame()"><span>↺ MAIN MENU</span></button>
+</div>
+
+<!-- Game Over Screen (Solo Mode) -->
+<div id="gameover-screen" class="overlay">
+  <div class="overlay-title">GAME OVER</div>
+  <div id="gameover-stats">
+    WAVE REACHED &nbsp; <span id="go-wave">0</span><br>
+    ENEMIES KILLED &nbsp; <span id="go-kills">0</span><br>
+    SCORE &nbsp; <span id="go-score">0</span>
+  </div>
+  <button class="overlay-btn" onclick="restartGame()"><span>↺ PLAY AGAIN</span></button>
+</div>
+
+<!-- Paused Screen -->
+<div id="paused-screen" class="overlay">
+  <div class="overlay-title">PAUSED</div>
+  <button class="overlay-btn" onclick="resumeGame()"><span>▶ RESUME</span></button>
+  <button class="overlay-btn" onclick="restartGame()"><span>↺ RESTART</span></button>
+</div>
+
+<!-- Click to Lock Mouse Prompt -->
+<div id="click-to-lock-overlay" class="overlay" style="display:none; background: rgba(0,0,0,0.85); cursor: pointer;" onclick="requestCanvasPointerLock()">
+  <div class="overlay-title" style="color: #fcfc54; font-size: 32px;">CLICK ANYWHERE TO AIM & PLAY</div>
+  <div class="overlay-sub">CLICK TO LOCK MOUSE CURSOR FOR FULL FPS CONTROL</div>
+</div>
+
+<!-- Canvas -->
+<canvas id="canvas"></canvas>
+
+<!-- HUD -->
+<div id="hud" style="display:none;">
+  <div id="fps">FPS: --</div>
+
+  <!-- Crosshair -->
+  <div id="crosshair"><div class="crosshair-dot"></div></div>
+
+  <!-- Health -->
+  <div id="health-container">
+    <div id="health-label">Health</div>
+    <div id="health-bar-bg"><div id="health-bar"></div></div>
+    <div id="health-value">100 / 100</div>
+  </div>
+
+  <!-- Weapon slots (Minecraft Hotbar Slots) -->
+  <div id="weapon-slots">
+    <div class="weapon-slot active" id="weapon-slot-1"><span class="slot-key">[1]</span>M4 ASSAULT</div>
+    <div class="weapon-slot" id="weapon-slot-2"><span class="slot-key">[2]</span>MP5 SMG</div>
+    <div class="weapon-slot" id="weapon-slot-3"><span class="slot-key">[3]</span>SPAS-12</div>
+    <div class="weapon-slot" id="weapon-slot-4"><span class="slot-key">[4]</span>AWP SNIPER</div>
+  </div>
+
+  <!-- Ammo -->
+  <div id="ammo-container">
+    <div id="ammo-label">Ammo</div>
+    <div id="weapon-name">M4 ASSAULT</div>
+    <div id="ammo-value">30</div>
+    <div id="ammo-reserve">/ 90</div>
+  </div>
+
+  <!-- Reload -->
+  <div id="reload-bar-container">
+    <div id="reload-label">Reloading...</div>
+    <div id="reload-bar-bg"><div id="reload-bar"></div></div>
+  </div>
+
+  <!-- Wave / Mode HUD Indicator -->
+  <div id="wave-container">
+    <div id="wave-label">Mode</div>
+    <div id="wave-number">SOLO</div>
+    <div id="enemy-count">0 enemies</div>
+  </div>
+
+  <!-- Score -->
+  <div id="score-container">
+    <div id="score-label">Score</div>
+    <div id="score-value">0</div>
+  </div>
+
+  <!-- Sprint -->
+  <div id="sprint-indicator">⚡ SPRINTING</div>
+
+  <!-- Wave / Announcement Banner -->
+  <div id="wave-announce">
+    <div id="wave-announce-text">WAVE 1</div>
+    <div id="wave-announce-sub">PREPARE FOR BATTLE</div>
+  </div>
+
+  <!-- Hit indicator -->
+  <div id="hit-indicator"></div>
+
+  <!-- Damage vignette -->
+  <div id="damage-vignette"></div>
+
+  <!-- Kill feed -->
+  <div id="kill-feed"></div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
