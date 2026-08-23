@@ -380,6 +380,17 @@ export class EnemySystem {
       enemy.isAlive = false;
       enemy.isDying = true;
       enemy.deathTimer = 0; // ensure snapshot triggers on first _updateDeath call
+
+      // Dynamic Health Aid drop probability decay by wave:
+      // Wave 1 = 50%, decreases by 10% per wave down to a minimum limit of 10%
+      const currentWave = window._waveManager?.currentWave || 1;
+      const dropProb = Math.max(0.10, 0.50 - (currentWave - 1) * 0.10);
+
+      if (Math.random() < dropProb && window._healthPickupManager) {
+        const pos = enemy.group.position;
+        window._healthPickupManager.spawn(pos.x, pos.z, pos.y);
+      }
+
       return true;
     }
     return false;

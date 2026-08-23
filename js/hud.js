@@ -113,6 +113,21 @@ export class HUD {
     document.getElementById("damage-vignette").style.opacity = "0.7";
   }
 
+  showHealNotification(amount) {
+    const feed = document.getElementById("kill-feed");
+    if (!feed) return;
+    const el = document.createElement("div");
+    el.className = "kill-notification";
+    el.style.borderColor = "#22c55e";
+    el.style.color = "#86efac";
+    el.textContent = `✚ HEALTH PACK RESTORED (+${amount}% HP)`;
+    feed.appendChild(el);
+    setTimeout(() => {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    }, 2200);
+    while (feed.children.length > 5) feed.removeChild(feed.firstChild);
+  }
+
   showHitIndicator() {
     this._hitTimer = 0.15;
     document.getElementById("hit-indicator").style.opacity = "1";

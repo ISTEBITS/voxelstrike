@@ -19,6 +19,8 @@ export class MobileControlsManager {
     this.lastLookPos = { x: 0, y: 0 };
     this._autoShootInterval = null;
 
+    this.lookSensitivity = parseFloat(localStorage.getItem("voxelstrike_mobile_sens") || "1.0");
+
     this._initUI();
     this._bindEvents();
     this.checkOrientation();
@@ -30,11 +32,26 @@ export class MobileControlsManager {
     const touchUI = document.getElementById("mobile-touch-controls");
     if (touchUI) touchUI.style.display = "block";
 
+    const weaponSlots = document.getElementById("weapon-slots");
+    if (weaponSlots) weaponSlots.style.display = "none";
+
     // Setup action buttons
     const shootBtn = document.getElementById("btn-touch-shoot");
     const jumpBtn = document.getElementById("btn-touch-jump");
     const reloadBtn = document.getElementById("btn-touch-reload");
     const weaponBtn = document.getElementById("btn-touch-weapon");
+    const pauseBtn = document.getElementById("btn-touch-pause");
+    const sensSlider = document.getElementById("mobile-sens-slider");
+
+    if (sensSlider) {
+      sensSlider.value = this.lookSensitivity;
+      const display = document.getElementById("sens-val-display");
+      if (display) display.textContent = `${this.lookSensitivity.toFixed(1)}x`;
+
+      sensSlider.addEventListener("input", (e) => {
+        this.setSensitivity(e.target.value);
+      });
+    }
 
     if (shootBtn) {
       shootBtn.addEventListener("touchstart", (e) => {
@@ -77,6 +94,24 @@ export class MobileControlsManager {
         window._shootingSystem?.cycleNextWeapon();
       });
     }
+
+    if (pauseBtn) {
+      pauseBtn.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        window.pauseGame?.();
+      });
+      pauseBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        window.pauseGame?.();
+      });
+    }
+  }
+
+  setSensitivity(val) {
+    this.lookSensitivity = parseFloat(val) || 1.0;
+    localStorage.setItem("voxelstrike_mobile_sens", this.lookSensitivity.toString());
+    const display = document.getElementById("sens-val-display");
+    if (display) display.textContent = `${this.lookSensitivity.toFixed(1)}x`;
   }
 
   _bindEvents() {
@@ -84,6 +119,15 @@ export class MobileControlsManager {
     window.addEventListener("orientationchange", () => this.checkOrientation());
 
     if (!this.isTouchDevice) return;
+
+    // Automatically trigger landscape lock and full screen on first user touch gesture
+    const autoFullscreenHandler = () => {
+      this.requestFullscreenAndLandscape();
+      window.removeEventListener("touchstart", autoFullscreenHandler);
+      window.removeEventListener("click", autoFullscreenHandler);
+    };
+    window.addEventListener("touchstart", autoFullscreenHandler, { passive: true });
+    window.addEventListener("click", autoFullscreenHandler, { passive: true });
 
     const joystickZone = document.getElementById("touch-joystick-zone");
     const lookZone = document.getElementById("touch-look-zone");
@@ -147,7 +191,7 @@ export class MobileControlsManager {
             const dy = touch.clientY - this.lastLookPos.y;
             this.lastLookPos = { x: touch.clientX, y: touch.clientY };
 
-            const sens = 0.0038;
+            const sens = 0.0038 * this.lookSensitivity;
             this.player._yaw -= dx * sens;
             this.player._pitch -= dy * sens;
             this.player._pitch = Math.max(
@@ -168,6 +212,31 @@ export class MobileControlsManager {
 
       lookZone.addEventListener("touchend", endLook);
       lookZone.addEventListener("touchcancel", endLook);
+    }
+  }
+
+  requestFullscreenAndLandscape() {
+    if (!this.isTouchDevice) return;
+
+    // Request HTML5 Fullscreen
+    const elem = document.documentElement;
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen().catch(() => {});
+      } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen();
+      } else if (elem.msRequestFullscreen) {
+        elem.msRequestFullscreen();
+      }
+    }
+
+    // Request Screen Orientation Lock to Landscape
+    if (screen.orientation && screen.orientation.lock) {
+      screen.orientation.lock("landscape").catch(() => {
+        if (screen.orientation.lock) {
+          screen.orientation.lock("landscape-primary").catch(() => {});
+        }
+      });
     }
   }
 
@@ -201,9 +270,8 @@ export class MobileControlsManager {
       portraitOverlay.style.display = isPortrait ? "flex" : "none";
     }
 
-    // Request Screen Orientation Lock to Landscape if supported by device
-    if (!isPortrait && screen.orientation && screen.orientation.lock) {
-      screen.orientation.lock("landscape").catch(() => {});
+    if (!isPortrait) {
+      this.requestFullscreenAndLandscape();
     }
   }
 }

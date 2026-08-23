@@ -12,6 +12,7 @@ import { AudioManager } from "./audio.js";
 import { NetworkManager } from "./network.js";
 import { RemotePlayerManager } from "./remotePlayer.js";
 import { MobileControlsManager } from "./mobile.js";
+import { HealthPickupManager } from "./healthPickups.js";
 
 let renderer,
   sceneManager,
@@ -23,7 +24,8 @@ let renderer,
   audio,
   networkManager,
   remotePlayerManager,
-  mobileControls;
+  mobileControls,
+  healthPickupManager;
 
 let gameRunning = false,
   gamePaused = false,
@@ -61,6 +63,7 @@ function init() {
   networkManager = new NetworkManager();
   remotePlayerManager = new RemotePlayerManager(sceneManager.scene);
   mobileControls = new MobileControlsManager(player, shootingSystem);
+  healthPickupManager = new HealthPickupManager(sceneManager.scene);
 
   // Wire audio
   shootingSystem.audio = audio;
@@ -78,6 +81,7 @@ function init() {
   window._networkManager = networkManager;
   window._remotePlayerManager = remotePlayerManager;
   window._mobileControls = mobileControls;
+  window._healthPickupManager = healthPickupManager;
 
   window.startSoloGame = startSoloGame;
   window.openMultiplayerLobby = openMultiplayerLobby;
@@ -88,6 +92,10 @@ function init() {
   window.startPvPMatch = startPvPMatch;
   window.restartGame = restartGame;
   window.resumeGame = resumeGame;
+  window.pauseGame = pauseGame;
+  window.goToHome = goToHome;
+  window.openSettingsMenu = openSettingsMenu;
+  window.closeSettingsMenu = closeSettingsMenu;
   window.requestCanvasPointerLock = requestCanvasPointerLock;
 
   shootingSystem.onHit = () => hud.showHitIndicator();
@@ -174,6 +182,8 @@ function startSoloGame() {
   gameMode = "solo";
   document.getElementById("start-screen").style.display = "none";
   document.getElementById("hud").style.display = "block";
+  mobileControls?.requestFullscreenAndLandscape();
+  healthPickupManager.spawnInitialPacks();
   requestCanvasPointerLock();
   gameRunning = true;
   waveManager.start("solo");
@@ -330,6 +340,8 @@ function launchPvPMatch() {
   gameMode = "pvp";
   document.getElementById("lobby-screen").style.display = "none";
   document.getElementById("hud").style.display = "block";
+  mobileControls?.requestFullscreenAndLandscape();
+  healthPickupManager.spawnInitialPacks();
 
   // Attempt pointer lock; show click prompt overlay if browser requires direct click gesture
   requestCanvasPointerLock();
@@ -408,10 +420,64 @@ function restartGame() {
   location.reload();
 }
 
+function pauseGame() {
+  if (!gameRunning || player.isDead) return;
+  gamePaused = true;
+  if (document.pointerLockElement) {
+    document.exitPointerLock();
+  }
+  document.getElementById("click-to-lock-overlay").style.display = "none";
+  document.getElementById("paused-screen").style.display = "flex";
+}
+
 function resumeGame() {
   document.getElementById("paused-screen").style.display = "none";
+  document.getElementById("settings-screen").style.display = "none";
   requestCanvasPointerLock();
   gamePaused = false;
+}
+
+let previousPauseState = false;
+
+function openSettingsMenu() {
+  previousPauseState = gamePaused;
+  if (gameRunning) {
+    gamePaused = true;
+    if (document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+  }
+  document.getElementById("paused-screen").style.display = "none";
+  document.getElementById("click-to-lock-overlay").style.display = "none";
+  document.getElementById("settings-screen").style.display = "flex";
+}
+
+function closeSettingsMenu() {
+  document.getElementById("settings-screen").style.display = "none";
+  if (gameRunning) {
+    if (!previousPauseState) {
+      resumeGame();
+    } else {
+      document.getElementById("paused-screen").style.display = "flex";
+    }
+  }
+}
+
+function goToHome() {
+  gameRunning = false;
+  gamePaused = false;
+  if (document.pointerLockElement) {
+    document.exitPointerLock();
+  }
+  if (networkManager) networkManager.disconnect();
+  document.getElementById("paused-screen").style.display = "none";
+  document.getElementById("gameover-screen").style.display = "none";
+  document.getElementById("pvp-victory-screen").style.display = "none";
+  document.getElementById("pvp-respawn-screen").style.display = "none";
+  document.getElementById("click-to-lock-overlay").style.display = "none";
+  document.getElementById("hud").style.display = "none";
+  document.getElementById("lobby-screen").style.display = "none";
+  document.getElementById("start-screen").style.display = "flex";
 }
 
 function showGameOver() {
@@ -442,9 +508,9 @@ function onPointerLock() {
 function onKeyDown(e) {
   if (e.code === "Escape" && gameRunning && !player.isDead) {
     if (!gamePaused) {
-      gamePaused = true;
-      document.exitPointerLock();
-      document.getElementById("paused-screen").style.display = "flex";
+      pauseGame();
+    } else {
+      resumeGame();
     }
   }
 }
@@ -500,6 +566,7 @@ function animate() {
   waveManager.update(delta);
   sceneManager.update(delta);
   hud.update(delta);
+  healthPickupManager.update(delta, player, audio, hud);
 
   renderer.clear();
   renderer.render(sceneManager.scene, sceneManager.camera);
