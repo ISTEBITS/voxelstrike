@@ -8,10 +8,10 @@ const ENEMY_HEIGHT = 1.8;
 const ATTACK_RANGE = 2.0;
 const ATTACK_DAMAGE = 10;
 const ATTACK_RATE = 1.2;
-const SEPARATION_RADIUS = 2.0;   // distance within which zombies push each other apart
-const SEPARATION_FORCE = 1.8;    // strength of lateral push (gentle)
-const HARD_BODY_RADIUS = 0.9;    // minimum distance — hard push below this
-const STEER_SMOOTHING = 3.5;     // how fast steering direction blends (lower = smoother)
+const SEPARATION_RADIUS = 2.0;   
+const SEPARATION_FORCE = 1.8;    // strength of lateral push 
+const HARD_BODY_RADIUS = 0.9;    
+const STEER_SMOOTHING = 3.5;     
 
 export class EnemySystem {
   constructor(scene, collidables) {
@@ -195,9 +195,6 @@ export class EnemySystem {
 
     this.scene.add(group);
 
-    // Each zombie gets a fixed lateral preference (+1 or -1) so when two
-    // zombies meet they consistently dodge to opposite sides instead of
-    // fighting each other and causing zig-zag oscillation.
     const lateralSign = Math.random() < 0.5 ? -1 : 1;
 
     const enemy = {
@@ -264,17 +261,12 @@ export class EnemySystem {
     if (dist < 0.1) return;
     toPlayer.normalize();
 
-    // Lateral axis (perpendicular to toPlayer on the XZ plane)
-    // Used to project separation sideways so zombies spread out without
-    // zig-zagging toward/away from the player.
+  
     const latX = -toPlayer.z;   // perpendicular: rotate 90°
     const latZ =  toPlayer.x;
 
-    // --- Separation: compute a lateral-only avoidance steering vector ---
-    // Instead of pushing zombies in all directions (which fights the forward
-    // movement and causes zig-zag), we project the repulsion onto the lateral
-    // axis. Each zombie has a fixed lateralSign so paired zombies dodge to
-    // consistent, opposite sides.
+    //  Each zombie has a fixed lateralSign so paired zombies dodge
+    
     let lateralAccum = 0;   // accumulate lateral displacement
     for (const other of this.enemies) {
       if (other === e || !other.isAlive) continue;
@@ -288,7 +280,7 @@ export class EnemySystem {
         const overlap = HARD_BODY_RADIUS - d;
         pos.x += (dx / d) * overlap * 0.5;
         pos.z += (dz / d) * overlap * 0.5;
-        continue; // don't also apply soft separation
+        continue; 
       }
 
       if (d2 < SEPARATION_RADIUS * SEPARATION_RADIUS && d2 > 0.01) {
