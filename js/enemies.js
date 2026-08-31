@@ -8,6 +8,10 @@ const ENEMY_HEIGHT = 1.8;
 const ATTACK_RANGE = 2.0;
 const ATTACK_DAMAGE = 10;
 const ATTACK_RATE = 1.2;
+const SEPARATION_RADIUS = 2.0;   
+const SEPARATION_FORCE = 1.8;    // strength of lateral push 
+const HARD_BODY_RADIUS = 0.9;    
+const STEER_SMOOTHING = 3.5;     
 
 export class EnemySystem {
   constructor(scene, collidables) {
@@ -34,16 +38,25 @@ export class EnemySystem {
   }
 
   spawn(config) {
+    // Pre-compute well-distributed angles using the golden angle so
+    // zombies are evenly scattered around the full 360°.
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5));  // ≈ 137.5°
+    const baseAngle = Math.random() * Math.PI * 2;     // random rotation offset per wave
     for (let i = 0; i < config.count; i++) {
-      setTimeout(() => this._spawnOne(config), i * 250);
+      const idx = i;
+      setTimeout(() => {
+        // Golden-angle distribution + random jitter (±15°) prevents clustering
+        const angle = baseAngle + idx * goldenAngle + (Math.random() - 0.5) * 0.52;
+        // Spread out distances more: between spawnRadius and spawnRadius+40
+        const dist = config.spawnRadius + Math.random() * 40;
+        this._spawnOne(config, angle, dist);
+      }, i * 250);
     }
   }
 
-  _spawnOne(config) {
-    const angle = Math.random() * Math.PI * 2;
-    const r = config.spawnRadius + Math.random() * 15;
-    const x = Math.cos(angle) * r;
-    const z = Math.sin(angle) * r;
+  _spawnOne(config, angle, dist) {
+    const x = Math.cos(angle) * dist;
+    const z = Math.sin(angle) * dist;
     const terrainY = window._sceneManager?.getTerrainHeight(x, z) ?? 0;
     const y = terrainY + ENEMY_HEIGHT / 2;
 
@@ -182,6 +195,8 @@ export class EnemySystem {
 
     this.scene.add(group);
 
+    const lateralSign = Math.random() < 0.5 ? -1 : 1;
+
     const enemy = {
       group,
       body,
@@ -208,6 +223,10 @@ export class EnemySystem {
       // store base colors for flash reset
       skinColor: skinColorHex,
       shirtColor: shirtColor,
+      // Smoothed steering direction (lerped each frame for fluid motion)
+      smoothDir: new THREE.Vector3(0, 0, 0),
+      // Fixed lateral dodge preference so two nearby zombies don't oscillate
+      lateralSign,
     };
     this.enemies.push(enemy);
     return enemy;
@@ -241,14 +260,73 @@ export class EnemySystem {
     const dist = toPlayer.length();
     if (dist < 0.1) return;
     toPlayer.normalize();
-    // Manual yaw-only rotation — lookAt can flip the up-vector causing enemies to go upside down
-    const targetYaw = Math.atan2(playerPos.x - pos.x, playerPos.z - pos.z);
-    e.group.rotation.set(0, targetYaw, 0);
+
+  
+    const latX = -toPlayer.z;   // perpendicular: rotate 90°
+    const latZ =  toPlayer.x;
+
+    //  Each zombie has a fixed lateralSign so paired zombies dodge
+    
+    let lateralAccum = 0;   // accumulate lateral displacement
+    for (const other of this.enemies) {
+      if (other === e || !other.isAlive) continue;
+      const dx = pos.x - other.group.position.x;
+      const dz = pos.z - other.group.position.z;
+      const d2 = dx * dx + dz * dz;
+
+      // Hard-body collision: if two zombies overlap, push them apart directly
+      if (d2 < HARD_BODY_RADIUS * HARD_BODY_RADIUS && d2 > 0.001) {
+        const d = Math.sqrt(d2);
+        const overlap = HARD_BODY_RADIUS - d;
+        pos.x += (dx / d) * overlap * 0.5;
+        pos.z += (dz / d) * overlap * 0.5;
+        continue; 
+      }
+
+      if (d2 < SEPARATION_RADIUS * SEPARATION_RADIUS && d2 > 0.01) {
+        const d = Math.sqrt(d2);
+        const strength = (SEPARATION_RADIUS - d) / SEPARATION_RADIUS;
+        // Project the raw repulsion vector onto the lateral axis
+        const rawLat = dx * latX + dz * latZ;
+        // If the projection is near zero (zombie is directly behind/ahead),
+        // use the zombie's fixed lateral preference to break the tie
+        const sign = Math.abs(rawLat) > 0.01 ? Math.sign(rawLat) : e.lateralSign;
+        lateralAccum += sign * strength;
+      }
+    }
+
+    // Build the desired movement direction: forward toward player + lateral dodge
+    const desiredX = toPlayer.x + latX * lateralAccum * SEPARATION_FORCE;
+    const desiredZ = toPlayer.z + latZ * lateralAccum * SEPARATION_FORCE;
+    // Normalize the desired direction so separation doesn't speed up movement
+    const desiredLen = Math.sqrt(desiredX * desiredX + desiredZ * desiredZ);
+    const normDesiredX = desiredLen > 0.001 ? desiredX / desiredLen : toPlayer.x;
+    const normDesiredZ = desiredLen > 0.001 ? desiredZ / desiredLen : toPlayer.z;
+
+    // Smooth the steering direction over time (lerp) to eliminate jitter
+    const lerpFactor = 1 - Math.exp(-STEER_SMOOTHING * delta);
+    e.smoothDir.x += (normDesiredX - e.smoothDir.x) * lerpFactor;
+    e.smoothDir.z += (normDesiredZ - e.smoothDir.z) * lerpFactor;
+    // Re-normalize the smoothed direction
+    const smLen = Math.sqrt(e.smoothDir.x * e.smoothDir.x + e.smoothDir.z * e.smoothDir.z);
+    if (smLen > 0.001) {
+      e.smoothDir.x /= smLen;
+      e.smoothDir.z /= smLen;
+    }
+
+    // Manual yaw-only rotation — face the direction of travel for natural look
+    const targetYaw = Math.atan2(e.smoothDir.x, e.smoothDir.z);
+    // Smoothly rotate toward target yaw
+    let yawDiff = targetYaw - e.group.rotation.y;
+    // Wrap to [-PI, PI]
+    while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+    while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+    e.group.rotation.y += yawDiff * Math.min(1, 5.0 * delta);
 
     e.velocity.y += -22 * delta;
     if (dist > ATTACK_RANGE - 0.3) {
-      pos.x += toPlayer.x * e.speed * delta;
-      pos.z += toPlayer.z * e.speed * delta;
+      pos.x += e.smoothDir.x * e.speed * delta;
+      pos.z += e.smoothDir.z * e.speed * delta;
       this._resolveEnemyCollisions(e, pos);
     }
 
