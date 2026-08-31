@@ -19,7 +19,7 @@
 ##  About the Project
 
 **VOXELSTRIKE** is an immersive **3D virtual battleground** that brings the fun of both **Zombie Apocalypse** and **Online multiplayer Battle** to life.  
-Built using **Three.js** and **Peer.js** this project allows users to experience Zombie Apocalypse and the fun of Online Multiplayer PVP Deathmatch.
+Built using **HTML**, **CSS**, **Three.js**, **Web Audio API** and **Peer.js** this project allows users to experience Zombie Apocalypse and the fun of Online Multiplayer PVP Deathmatch.
 
 
 ---
