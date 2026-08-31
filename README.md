@@ -1,7 +1,7 @@
 <h1 align="center"> VOXELSTRIKE</h1>
 
 <p align="center">
-  <em>Survive the <b>Zombie Apocalypse</b> along with an immersive Online Multiplayer PVP Deathmatch</em>
+  <em>Survive the <b>Zombie Apocalypse</b> along with an immersive <b>Online Multiplayer PVP Deathmatch</b></em>
 </p>
 
 <p align="center">
