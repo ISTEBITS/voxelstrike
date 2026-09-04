@@ -197,6 +197,38 @@
       image-rendering: pixelated;
     }
 
+    /* Start Screen — transparent with 3D world background */
+    #start-screen {
+      background-color: transparent;
+      background-image: none;
+      image-rendering: auto;
+    }
+    #start-screen::before {
+      content: '';
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: radial-gradient(ellipse at center, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.75) 70%, rgba(0,0,0,0.92) 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    #start-screen > * {
+      position: relative;
+      z-index: 1;
+    }
+    .start-menu-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0px;
+      margin-top: 20px;
+    }
+    .start-menu-container .overlay-btn {
+      width: 340px;
+      max-width: 85vw;
+      text-align: center;
+      justify-content: center;
+      margin: 5px 0;
+    }
+
     .overlay-title {
       font-family: 'Press Start 2P', 'VT323', monospace;
       font-size: 38px; font-weight: bold; letter-spacing: 4px;
@@ -286,6 +318,24 @@
     #gameover-screen .overlay-title { color: #ff5555; text-shadow: 4px 4px 0px #550000; }
     #gameover-stats { color: #aaaaaa; font-size: 22px; letter-spacing: 2px; line-height: 2.0; text-align: center; margin-bottom: 30px; text-shadow: 2px 2px 0px #000; }
     #gameover-stats span { color: #55ffff; font-weight: bold; }
+
+    /* Game Over Screen — transparent with red vignette, zombies visible behind */
+    #gameover-screen {
+      background-color: transparent;
+      background-image: none;
+      image-rendering: auto;
+    }
+    #gameover-screen::before {
+      content: '';
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: radial-gradient(ellipse at center, rgba(80,0,0,0.45) 0%, rgba(40,0,0,0.78) 60%, rgba(0,0,0,0.94) 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    #gameover-screen > * {
+      position: relative;
+      z-index: 1;
+    }
 
     #paused-screen { display: none; }
     #paused-screen .overlay-title { color: #55ffff; text-shadow: 4px 4px 0px #005555; }
@@ -642,7 +692,7 @@
   <div class="overlay-title">VOXELSTRIKE 3D</div>
   <div class="overlay-sub">TACTICAL FPS & PvP DEATHMATCH</div>
 
-  <div class="mode-buttons">
+  <div class="start-menu-container">
     <button class="overlay-btn btn-green" onclick="startSoloGame()">
       <span>🧟 SOLO ZOMBIE WAVE</span>
     </button>

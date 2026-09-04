@@ -31,7 +31,11 @@ let gameRunning = false,
   gamePaused = false,
   gameMode = "solo", // 'solo' or 'pvp'
   clock,
-  netSendTimer = 0;
+  netSendTimer = 0,
+  menuAnimating = false,
+  menuAnimFrameId = null,
+  gameOverAnimating = false,
+  gameOverAnimFrameId = null;
 
 function init() {
   const canvas = document.getElementById("canvas");
@@ -137,6 +141,90 @@ function init() {
   runMinecraftLoadingScreen();
 }
 
+// ── Menu Panorama (Minecraft-style rotating camera) ─────────
+function startMenuPanorama() {
+  menuAnimating = true;
+  const cam = sceneManager.camera;
+  const radius = 55;
+  const height = 22;
+  const lookY = 5;
+  const speed = 0.06; // radians per second
+  let angle = 0;
+  let lastTime = performance.now();
+
+  function menuLoop(now) {
+    if (!menuAnimating) return;
+    menuAnimFrameId = requestAnimationFrame(menuLoop);
+
+    const dt = Math.min((now - lastTime) / 1000, 0.05);
+    lastTime = now;
+    angle += speed * dt;
+
+    cam.position.set(
+      Math.cos(angle) * radius,
+      height,
+      Math.sin(angle) * radius
+    );
+    cam.lookAt(0, lookY, 0);
+
+    renderer.clear();
+    renderer.render(sceneManager.scene, cam);
+  }
+  menuAnimFrameId = requestAnimationFrame(menuLoop);
+}
+
+function stopMenuPanorama() {
+  menuAnimating = false;
+  if (menuAnimFrameId) {
+    cancelAnimationFrame(menuAnimFrameId);
+    menuAnimFrameId = null;
+  }
+}
+
+// ── Game Over Panorama (death scene with approaching zombies) ──
+function startGameOverPanorama(deathPos) {
+  gameOverAnimating = true;
+  const cam = sceneManager.camera;
+  const startX = deathPos.x;
+  const startZ = deathPos.z;
+  let elapsed = 0;
+  let lastTime = performance.now();
+
+  function deathLoop(now) {
+    if (!gameOverAnimating) return;
+    gameOverAnimFrameId = requestAnimationFrame(deathLoop);
+
+    const dt = Math.min((now - lastTime) / 1000, 0.05);
+    lastTime = now;
+    elapsed += dt;
+
+    // Camera slowly pulls back and rises from death position
+    const pullBack = Math.min(elapsed * 1.5, 12);
+    const riseUp = Math.min(elapsed * 2.0, 15);
+    cam.position.set(
+      startX - Math.sin(elapsed * 0.15) * pullBack,
+      deathPos.y + 2 + riseUp,
+      startZ - Math.cos(elapsed * 0.15) * pullBack
+    );
+    cam.lookAt(startX, deathPos.y + 1, startZ);
+
+    // Keep zombies moving toward the death location
+    enemySystem.update(dt, new THREE.Vector3(startX, deathPos.y + 1, startZ));
+
+    renderer.clear();
+    renderer.render(sceneManager.scene, cam);
+  }
+  gameOverAnimFrameId = requestAnimationFrame(deathLoop);
+}
+
+function stopGameOverPanorama() {
+  gameOverAnimating = false;
+  if (gameOverAnimFrameId) {
+    cancelAnimationFrame(gameOverAnimFrameId);
+    gameOverAnimFrameId = null;
+  }
+}
+
 function runMinecraftLoadingScreen() {
   const screen = document.getElementById("minecraft-loading-screen");
   const fill = document.getElementById("mc-progress-fill");
@@ -157,6 +245,7 @@ function runMinecraftLoadingScreen() {
         screen.style.opacity = "0";
         setTimeout(() => {
           screen.style.display = "none";
+          startMenuPanorama();
         }, 500);
       }, 400);
     } else {
@@ -180,6 +269,10 @@ function requestCanvasPointerLock() {
 
 // ── Solo Mode Start ───────────────────────────────────────
 function startSoloGame() {
+  stopMenuPanorama();
+  stopGameOverPanorama();
+  player.spawnSolo();
+  enemySystem.clearAll();
   gameMode = "solo";
   document.getElementById("start-screen").style.display = "none";
   document.getElementById("hud").style.display = "block";
@@ -194,6 +287,7 @@ function startSoloGame() {
 
 // ── PvP Lobby UI Handlers ─────────────────────────────────
 function openMultiplayerLobby() {
+  stopMenuPanorama();
   document.getElementById("start-screen").style.display = "none";
   document.getElementById("lobby-screen").style.display = "flex";
   switchLobbyTab("create");
@@ -203,6 +297,7 @@ function backToMainMenu() {
   if (networkManager) networkManager.disconnect();
   document.getElementById("lobby-screen").style.display = "none";
   document.getElementById("start-screen").style.display = "flex";
+  startMenuPanorama();
 }
 
 function switchLobbyTab(tab) {
@@ -338,6 +433,10 @@ function startPvPMatch() {
 }
 
 function launchPvPMatch() {
+  stopMenuPanorama();
+  stopGameOverPanorama();
+  player.respawnAtRandomPoint();
+  enemySystem.clearAll();
   gameMode = "pvp";
   document.getElementById("lobby-screen").style.display = "none";
   document.getElementById("hud").style.display = "block";
@@ -418,6 +517,8 @@ function showLobbyError(msg) {
 }
 
 function restartGame() {
+  stopGameOverPanorama();
+  stopMenuPanorama();
   location.reload();
 }
 
@@ -467,6 +568,7 @@ function closeSettingsMenu() {
 function goToHome() {
   gameRunning = false;
   gamePaused = false;
+  stopGameOverPanorama();
   if (document.pointerLockElement) {
     document.exitPointerLock();
   }
@@ -479,6 +581,7 @@ function goToHome() {
   document.getElementById("hud").style.display = "none";
   document.getElementById("lobby-screen").style.display = "none";
   document.getElementById("start-screen").style.display = "flex";
+  startMenuPanorama();
 }
 
 function showGameOver() {
@@ -488,6 +591,10 @@ function showGameOver() {
   document.getElementById("go-wave").textContent = waveManager.currentWave;
   document.getElementById("go-kills").textContent = hud.totalKills;
   document.getElementById("go-score").textContent = hud.score;
+
+  // Start death scene panorama with zombies approaching
+  const deathPos = player.getPosition();
+  startGameOverPanorama(deathPos);
 }
 
 function onPointerLock() {
