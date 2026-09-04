@@ -5,8 +5,9 @@
 import * as THREE from "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js";
 
 export class SceneManager {
-  constructor(renderer) {
+  constructor(renderer, isMobile = false) {
     this.renderer = renderer;
+    this.isMobile = isMobile;
     this.scene = new THREE.Scene();
     this.collidables = [];
     this._buildCamera();
@@ -50,7 +51,7 @@ export class SceneManager {
 
   _buildStarrySky() {
     const starGeo = new THREE.BufferGeometry();
-    const count = 750;
+    const count = this.isMobile ? 300 : 750;
     const pos = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
       const u = Math.random();
@@ -109,7 +110,7 @@ export class SceneManager {
       opacity: 0.65,
     });
     const cloudGeo = new THREE.BoxGeometry(18, 4, 18);
-    const CLOUD_COUNT = 50;
+    const CLOUD_COUNT = this.isMobile ? 20 : 50;
     const cloudInst = new THREE.InstancedMesh(cloudGeo, cloudMat, CLOUD_COUNT);
     const dummy = new THREE.Object3D();
 
@@ -136,8 +137,9 @@ export class SceneManager {
     this.sun = new THREE.DirectionalLight(0x8ab4f8, 0.45);
     this.sun.position.set(-100, 150, -80);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.width = 2048;
-    this.sun.shadow.mapSize.height = 2048;
+    const shadowRes = this.isMobile ? 512 : 2048;
+    this.sun.shadow.mapSize.width = shadowRes;
+    this.sun.shadow.mapSize.height = shadowRes;
     this.sun.shadow.camera.near = 1;
     this.sun.shadow.camera.far = 500;
     this.sun.shadow.camera.left = -150;
@@ -184,6 +186,7 @@ export class SceneManager {
     this.scene.add(this.terrain);
     this.terrainMesh = this.terrain;
     this._buildTerrainRaycaster();
+    this._buildHeightLookup();
 
     // Dark Earth Path Patches (#3a1e0b)
     const dirtMat = new THREE.MeshLambertMaterial({ color: 0x3a1e0b });
@@ -205,7 +208,37 @@ export class SceneManager {
     this._terrainRay.ray.direction.set(0, -1, 0);
   }
 
+  // Pre-compute height grid from terrain vertices for O(1) lookups
+  _buildHeightLookup() {
+    const pos = this.terrainGeo.attributes.position;
+    this._hSeg = 80;
+    this._hSize = 300;
+    this._hStep = this._hSize / this._hSeg;
+    this._hHalf = this._hSize / 2;
+    this._hCount = this._hSeg + 1;
+    this._hGrid = new Float32Array(pos.count);
+    for (let i = 0; i < pos.count; i++) {
+      this._hGrid[i] = pos.getY(i);
+    }
+  }
+
   getTerrainHeight(x, z) {
+    if (this._hGrid) {
+      const gx = (x + this._hHalf) / this._hStep;
+      const gz = (z + this._hHalf) / this._hStep;
+      const ix0 = Math.max(0, Math.min(this._hSeg - 1, gx | 0));
+      const iz0 = Math.max(0, Math.min(this._hSeg - 1, gz | 0));
+      const ix1 = ix0 + 1;
+      const iz1 = iz0 + 1;
+      const fx = gx - ix0;
+      const fz = gz - iz0;
+      const c = this._hCount;
+      const h00 = this._hGrid[iz0 * c + ix0];
+      const h10 = this._hGrid[iz0 * c + ix1];
+      const h01 = this._hGrid[iz1 * c + ix0];
+      const h11 = this._hGrid[iz1 * c + ix1];
+      return h00 * (1 - fx) * (1 - fz) + h10 * fx * (1 - fz) + h01 * (1 - fx) * fz + h11 * fx * fz;
+    }
     this._terrainRay.ray.origin.set(x, 100, z);
     const hits = this._terrainRay.intersectObject(this.terrain);
     return hits.length ? hits[0].point.y : 0;
@@ -399,13 +432,13 @@ export class SceneManager {
       alphaTest: 0.15,
     });
 
-    const TREE_COUNT = 180;
+    const TREE_COUNT = this.isMobile ? 80 : 180;
     const trunkInst = new THREE.InstancedMesh(trunkGeo, trunkMat, TREE_COUNT);
     const leafInst = new THREE.InstancedMesh(leafGeo, leafMat, TREE_COUNT);
     const leaf2Inst = new THREE.InstancedMesh(leafGeo, leafMat, TREE_COUNT);
-    trunkInst.castShadow = true;
-    leafInst.castShadow = true;
-    leaf2Inst.castShadow = true;
+    trunkInst.castShadow = !this.isMobile;
+    leafInst.castShadow = !this.isMobile;
+    leaf2Inst.castShadow = !this.isMobile;
 
     const dummy = new THREE.Object3D();
     let placed = 0,
@@ -451,7 +484,7 @@ export class SceneManager {
     // Minecraft Cobblestone Boulders
     const rockGeo = new THREE.BoxGeometry(1.0, 1.0, 1.0);
     const rockMat = new THREE.MeshLambertMaterial({ color: 0x888894 });
-    const ROCK_COUNT = 70;
+    const ROCK_COUNT = this.isMobile ? 25 : 70;
     const rockInst = new THREE.InstancedMesh(rockGeo, rockMat, ROCK_COUNT);
     for (let i = 0; i < ROCK_COUNT; i++) {
       const x = rand(-130, 130),
@@ -465,7 +498,7 @@ export class SceneManager {
       rockInst.setMatrixAt(i, dummy.matrix);
     }
     rockInst.instanceMatrix.needsUpdate = true;
-    rockInst.castShadow = true;
+    rockInst.castShadow = !this.isMobile;
     this.scene.add(rockInst);
 
     this._buildGrass();
@@ -476,7 +509,7 @@ export class SceneManager {
       color: 0x38e018,
       side: THREE.DoubleSide,
     });
-    const GRASS_COUNT = 500;
+    const GRASS_COUNT = this.isMobile ? 150 : 500;
     const gGeo = new THREE.PlaneGeometry(0.6, 0.8);
     const inst = new THREE.InstancedMesh(gGeo, grassMat, GRASS_COUNT * 2);
     const dummy = new THREE.Object3D();

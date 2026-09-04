@@ -5,6 +5,7 @@
 import * as THREE from "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js";
 
 const PICKUP_RADIUS = 1.8;
+const PICKUP_RADIUS_SQ = PICKUP_RADIUS * PICKUP_RADIUS;
 const HEAL_AMOUNT = 25; // 25% of 100 HP
 
 export class HealthPickupManager {
@@ -112,10 +113,13 @@ export class HealthPickupManager {
       p.mesh.rotation.y += delta * p.rotSpeed;
       p.mesh.position.y = p.baseY + Math.sin(this._time + p.x) * 0.04;
 
-      // Distance calculation to player
-      const dist = p.mesh.position.distanceTo(playerPos);
+      // Squared distance (avoids sqrt per pickup per frame)
+      const dx = p.mesh.position.x - playerPos.x;
+      const dy = p.mesh.position.y - playerPos.y;
+      const dz = p.mesh.position.z - playerPos.z;
+      const distSq = dx * dx + dy * dy + dz * dz;
 
-      if (dist <= PICKUP_RADIUS) {
+      if (distSq <= PICKUP_RADIUS_SQ) {
         // IF PLAYER IS AT 100 HP (FULL HEALTH), DO NOT COLLECT!
         if (!canHeal || player.health >= player.maxHealth) {
           continue; // Leave health pack on floor

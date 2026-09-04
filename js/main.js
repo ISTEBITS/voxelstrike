@@ -35,12 +35,13 @@ let gameRunning = false,
 
 function init() {
   const canvas = document.getElementById("canvas");
+  const isMobile = "ontouchstart" in window || navigator.maxTouchPoints > 0;
 
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: !isMobile });
+  renderer.setPixelRatio(isMobile ? 1.0 : Math.min(window.devicePixelRatio, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = isMobile ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.9;
@@ -49,7 +50,7 @@ function init() {
   clock = new THREE.Clock();
 
   audio = new AudioManager();
-  sceneManager = new SceneManager(renderer);
+  sceneManager = new SceneManager(renderer, isMobile);
   player = new Player(
     sceneManager.camera,
     sceneManager.scene,
@@ -558,7 +559,7 @@ function animate() {
     }
     remotePlayerManager.update(delta);
   } else {
-    enemySystem.update(delta, player.getPosition());
+    enemySystem.update(delta, player.camera.position);
   }
 
   player.update(delta);
