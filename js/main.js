@@ -13,6 +13,8 @@ import { NetworkManager } from "./network.js";
 import { RemotePlayerManager } from "./remotePlayer.js";
 import { MobileControlsManager } from "./mobile.js";
 import { HealthPickupManager } from "./healthPickups.js";
+import { TDMManager } from "./tdmManager.js";
+import { TDMMapBuilder } from "./tdmMap.js";
 
 let renderer,
   sceneManager,
@@ -25,7 +27,9 @@ let renderer,
   networkManager,
   remotePlayerManager,
   mobileControls,
-  healthPickupManager;
+  healthPickupManager,
+  tdmManager,
+  tdmMapBuilder;
 
 let gameRunning = false,
   gamePaused = false,
@@ -69,6 +73,8 @@ function init() {
   remotePlayerManager = new RemotePlayerManager(sceneManager.scene);
   mobileControls = new MobileControlsManager(player, shootingSystem);
   healthPickupManager = new HealthPickupManager(sceneManager.scene);
+  tdmManager = new TDMManager();
+  tdmMapBuilder = new TDMMapBuilder(sceneManager.scene, sceneManager.collidables);
 
   // Wire audio
   shootingSystem.audio = audio;
@@ -87,6 +93,8 @@ function init() {
   window._remotePlayerManager = remotePlayerManager;
   window._mobileControls = mobileControls;
   window._healthPickupManager = healthPickupManager;
+  window._tdmManager = tdmManager;
+  window._tdmMapBuilder = tdmMapBuilder;
 
   window.startSoloGame = startSoloGame;
   window.openMultiplayerLobby = openMultiplayerLobby;
@@ -95,6 +103,8 @@ function init() {
   window.createPvPRoom = createPvPRoom;
   window.joinPvPRoom = joinPvPRoom;
   window.startPvPMatch = startPvPMatch;
+  window.switchPlayerTeam = switchPlayerTeam;
+  window.kickPlayer = kickPlayer;
   window.restartGame = restartGame;
   window.resumeGame = resumeGame;
   window.pauseGame = pauseGame;
@@ -268,9 +278,14 @@ function requestCanvasPointerLock() {
 }
 
 // ── Solo Mode Start ───────────────────────────────────────
+let isAnimationLoopStarted = false;
+
 function startSoloGame() {
   stopMenuPanorama();
   stopGameOverPanorama();
+  sceneManager.setPvPMode(false);
+  tdmMapBuilder.destroy();
+  tdmManager.stopMatch();
   player.spawnSolo();
   enemySystem.clearAll();
   gameMode = "solo";
@@ -278,11 +293,23 @@ function startSoloGame() {
   document.getElementById("hud").style.display = "block";
   mobileControls?.requestFullscreenAndLandscape();
   healthPickupManager.spawnInitialPacks();
-  requestCanvasPointerLock();
+
+  const isMobile = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+  if (!isMobile) {
+    requestCanvasPointerLock();
+  } else {
+    document.getElementById("click-to-lock-overlay").style.display = "none";
+  }
+
   gameRunning = true;
+  gamePaused = false;
   waveManager.start("solo");
   clock.start();
-  animate();
+
+  if (!isAnimationLoopStarted) {
+    isAnimationLoopStarted = true;
+    animate();
+  }
 }
 
 // ── PvP Lobby UI Handlers ─────────────────────────────────
@@ -316,7 +343,6 @@ function createPvPRoom() {
   const pass = document.getElementById("create-room-pass").value;
   const name = document.getElementById("create-player-name").value;
   const targetKills = document.getElementById("create-target-kills").value;
-  const gameTeam = document.getElementById("create-game-team")?.value || "ffa";
 
   if (!roomId || !pass) {
     showLobbyError("Please enter a Room ID and Password!");
@@ -326,19 +352,23 @@ function createPvPRoom() {
   showLobbyAlert("Connecting to WebRTC Network...", "#60a5fa");
 
   networkManager.createRoom(roomId, pass, name, targetKills, {
-    gameTeam: gameTeam,
-    onRosterUpdate: (roster) => renderLobbyRoster(roster),
+    onConnected: (rId) => showWaitingLobby(rId, true),
+    onRosterUpdate: (roster, redScore, blueScore) => {
+      renderLobbyRoster(roster);
+      tdmManager.setScores(redScore, blueScore, roster);
+      hud.updatePvPScoreboard(roster);
+    },
     onMatchStart: () => launchPvPMatch(),
     onRemoteState: (data) => remotePlayerManager.updateRemoteState(data),
     onRemoteShoot: (data) => remotePlayerManager.triggerRemoteShoot(data, shootingSystem),
     onRemoteHit: (data) => handleIncomingRemoteHit(data),
     onRemoteDeath: (data) => handleRemotePlayerDeath(data),
     onRemoteRespawn: (data) => remotePlayerManager.setRemoteRespawn(data),
-    onMatchOver: (winnerName) => showPvPVictory(winnerName),
+    onPlayerLeft: (leftName, peerId) => handlePlayerLeft(leftName, peerId),
+    onMatchOver: (winnerName, isLastStanding) => showPvPVictory(winnerName, isLastStanding),
+    onKicked: (reason) => handleKicked(reason),
     onError: (err) => showLobbyError(err),
   });
-
-  showWaitingLobby(roomId, true);
 }
 
 function joinPvPRoom() {
@@ -354,18 +384,23 @@ function joinPvPRoom() {
   showLobbyAlert("Connecting to Room...", "#60a5fa");
 
   networkManager.joinRoom(roomId, pass, name, {
-    onRosterUpdate: (roster) => renderLobbyRoster(roster),
+    onConnected: (rId) => showWaitingLobby(rId, false),
+    onRosterUpdate: (roster, redScore, blueScore) => {
+      renderLobbyRoster(roster);
+      tdmManager.setScores(redScore, blueScore, roster);
+      hud.updatePvPScoreboard(roster);
+    },
     onMatchStart: () => launchPvPMatch(),
     onRemoteState: (data) => remotePlayerManager.updateRemoteState(data),
     onRemoteShoot: (data) => remotePlayerManager.triggerRemoteShoot(data, shootingSystem),
     onRemoteHit: (data) => handleIncomingRemoteHit(data),
     onRemoteDeath: (data) => handleRemotePlayerDeath(data),
     onRemoteRespawn: (data) => remotePlayerManager.setRemoteRespawn(data),
-    onMatchOver: (winnerName) => showPvPVictory(winnerName),
+    onPlayerLeft: (leftName, peerId) => handlePlayerLeft(leftName, peerId),
+    onMatchOver: (winnerName, isLastStanding) => showPvPVictory(winnerName, isLastStanding),
+    onKicked: (reason) => handleKicked(reason),
     onError: (err) => showLobbyError(err),
   });
-
-  showWaitingLobby(roomId, false);
 }
 
 function showWaitingLobby(roomId, isHost) {
@@ -378,54 +413,140 @@ function showWaitingLobby(roomId, isHost) {
 }
 
 function renderLobbyRoster(roster) {
-  const list = document.getElementById("roster-list");
+  const redList = document.getElementById("red-team-list");
+  const blueList = document.getElementById("blue-team-list");
+  const redCountEl = document.getElementById("red-team-count");
+  const blueCountEl = document.getElementById("blue-team-count");
   const startBtn = document.getElementById("start-match-btn");
+  const minReqMsg = document.getElementById("min-player-req-msg");
   const waitingMsg = document.getElementById("waiting-host-msg");
-  if (!list) return;
+  const switchBtn = document.getElementById("switch-team-btn");
 
-  list.innerHTML = "";
+  if (!redList || !blueList) return;
+
+  redList.innerHTML = "";
+  blueList.innerHTML = "";
+
   const players = Object.values(roster);
   const count = players.length;
+  let redCount = 0;
+  let blueCount = 0;
 
-  players.forEach((p, idx) => {
-    const div = document.createElement("div");
-    div.className = "roster-item";
-    const teamBadge = p.team ? `<span class="team-badge ${p.team}">${p.team.toUpperCase()} TEAM</span>` : "";
-    div.innerHTML = `
-      <div style="display:flex; align-items:center; gap:8px;">
-        <span class="mc-avatar-icon"></span>
+  const isLocalHost = networkManager.isHost;
+  const myPeerId = networkManager.myPeerId;
+  const myCurrentTeam = networkManager.myTeam;
+
+  // Update Switch Team button label
+  if (switchBtn) {
+    if (myCurrentTeam === "red") {
+      switchBtn.innerHTML = "<span>⇄ SWITCH TO BLUE TEAM</span>";
+    } else {
+      switchBtn.innerHTML = "<span>⇄ SWITCH TO RED TEAM</span>";
+    }
+  }
+
+  players.forEach((p) => {
+    const isMe = p.peerId === myPeerId;
+    const isHost = p.isHost;
+    const card = document.createElement("div");
+    card.className = `tdm-player-card ${isMe ? "is-me" : ""}`;
+
+    const showKick = isLocalHost && !isMe;
+    const kickBtnHtml = showKick ? `<button class="kick-btn" onclick="kickPlayer('${p.peerId}')">🚫 KICK</button>` : "";
+
+    card.innerHTML = `
+      <div class="player-info-left">
         <span style="font-weight:bold;">${p.name}</span>
-        ${p.isHost ? '<span class="host-badge">[HOST]</span>' : ''}
-        ${teamBadge}
+        ${isHost ? '<span class="host-badge-small">HOST</span>' : ''}
+        ${isMe ? '<span class="you-badge-small">YOU</span>' : ''}
       </div>
-      <span style="color: #22c55e; font-weight:bold;">⚡ READY</span>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="color:#22c55e; font-size:13px; font-weight:bold;">⚡ READY</span>
+        ${kickBtnHtml}
+      </div>
     `;
-    list.appendChild(div);
+
+    if (p.team === "blue") {
+      blueList.appendChild(card);
+      blueCount++;
+    } else {
+      redList.appendChild(card);
+      redCount++;
+    }
   });
+
+  if (redCountEl) redCountEl.textContent = `(${redCount})`;
+  if (blueCountEl) blueCountEl.textContent = `(${blueCount})`;
 
   hud.updatePvPScoreboard(roster);
 
-  // Enforce minimum 2 players requirement
-  if (startBtn) {
-    if (count < 2) {
+  // Enforce minimum 1 player per team requirement (Red >= 1 and Blue >= 1)
+  const canStart = redCount >= 1 && blueCount >= 1;
+
+  if (!canStart) {
+    if (minReqMsg) {
+      minReqMsg.style.display = "block";
+      minReqMsg.textContent = `⚠️ BOTH TEAMS NEED ≥1 PLAYER (RED: ${redCount}, BLUE: ${blueCount})`;
+    }
+    if (startBtn) {
       startBtn.classList.add("disabled");
       startBtn.style.opacity = "0.65";
-      startBtn.innerHTML = `<span>⚠️ MIN 2 PLAYERS REQUIRED (${count}/16)</span>`;
-      if (waitingMsg) waitingMsg.textContent = `Waiting for at least 1 more player to join... (${count}/16 connected)`;
-    } else {
+      startBtn.innerHTML = `<span>⚠️ MIN 1 PLAYER PER TEAM REQUIRED</span>`;
+    }
+    if (waitingMsg) waitingMsg.textContent = `Waiting for players to balance teams (Red: ${redCount}, Blue: ${blueCount})...`;
+  } else {
+    if (minReqMsg) minReqMsg.style.display = "none";
+    if (startBtn) {
       startBtn.classList.remove("disabled");
       startBtn.style.opacity = "1";
-      startBtn.innerHTML = `<span>▶ START PvP MATCH (${count} PLAYERS)</span>`;
-      if (waitingMsg) waitingMsg.textContent = `Host can start the match now (${count} players connected)`;
+      startBtn.innerHTML = `<span>▶ START TDM MATCH (${count} PLAYERS)</span>`;
     }
+    if (waitingMsg) waitingMsg.textContent = `Host can start the match now (Red: ${redCount}, Blue: ${blueCount})`;
   }
+}
+
+function switchPlayerTeam() {
+  const currentTeam = networkManager.myTeam;
+  const newTeam = currentTeam === "red" ? "blue" : "red";
+  networkManager.switchTeam(newTeam);
+  renderLobbyRoster(networkManager.roster);
+}
+
+function kickPlayer(targetPeerId) {
+  if (confirm("Are you sure you want to kick this player from the room?")) {
+    networkManager.kickPlayer(targetPeerId);
+  }
+}
+
+function handleKicked(reason) {
+  gameRunning = false;
+  document.exitPointerLock();
+  alert(`🚫 KICKED: ${reason}`);
+  goToHome();
+}
+
+function handlePlayerLeft(leftName, peerId) {
+  // Show toast notification in HUD
+  hud.showSystemToast(`⚠️ ${leftName} has left the game`);
+  audio?.play("empty_click");
+
+  // Remove remote 3D player
+  remotePlayerManager.removePlayer(peerId);
+
+  // Update Scoreboard and TDM HUD
+  hud.updatePvPScoreboard(networkManager.roster);
+  tdmManager.recalculateTeamScores(networkManager.roster);
 }
 
 function startPvPMatch() {
   if (networkManager.isHost) {
-    const count = Object.keys(networkManager.roster).length;
-    if (count < 2) {
-      showLobbyError("⚠️ Minimum 2 players are required to start an online PvP match!");
+    let redCount = 0, blueCount = 0;
+    for (const p of Object.values(networkManager.roster)) {
+      if (p.team === "blue") blueCount++;
+      else redCount++;
+    }
+    if (redCount < 1 || blueCount < 1) {
+      showLobbyError(`⚠️ Both teams require at least 1 player to start! (Red: ${redCount}, Blue: ${blueCount})`);
       return;
     }
     networkManager.startMatchHost();
@@ -435,28 +556,48 @@ function startPvPMatch() {
 function launchPvPMatch() {
   stopMenuPanorama();
   stopGameOverPanorama();
-  player.respawnAtRandomPoint();
   enemySystem.clearAll();
   gameMode = "pvp";
+
+  // 1. Switch SceneManager to PvP Mode (hides solo terrain & solo collidables)
+  sceneManager.setPvPMode(true);
+
+  // 2. Build dedicated TDM Arena Map
+  tdmMapBuilder.build();
+
+  // 3. Reset and start TDM Manager
+  tdmManager.reset(networkManager.targetKills, networkManager.matchTime);
+  tdmManager.startMatch();
+
+  // 4. Spawn local player at base
+  player.respawnAtTeamBase(networkManager.myTeam);
+
   document.getElementById("lobby-screen").style.display = "none";
   document.getElementById("hud").style.display = "block";
   mobileControls?.requestFullscreenAndLandscape();
   healthPickupManager.spawnInitialPacks();
 
-  // Attempt pointer lock; show click prompt overlay if browser requires direct click gesture
-  requestCanvasPointerLock();
-  if (document.pointerLockElement !== document.getElementById("canvas")) {
-    document.getElementById("click-to-lock-overlay").style.display = "flex";
+  // Only request pointer lock on desktop, NEVER block mobile with overlay
+  const isMobile = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+  if (!isMobile) {
+    requestCanvasPointerLock();
+    if (document.pointerLockElement !== document.getElementById("canvas")) {
+      document.getElementById("click-to-lock-overlay").style.display = "flex";
+    }
+  } else {
+    document.getElementById("click-to-lock-overlay").style.display = "none";
   }
 
-  // Spawn local player at a random spawn point
-  player.respawnAtRandomPoint();
-  enemySystem.clearAll(); // No zombies in PvP
   waveManager.start("pvp");
 
   gameRunning = true;
+  gamePaused = false;
   clock.start();
-  animate();
+
+  if (!isAnimationLoopStarted) {
+    isAnimationLoopStarted = true;
+    animate();
+  }
 }
 
 function handleIncomingRemoteHit(data) {
@@ -488,7 +629,7 @@ function handlePvPDeath(attackerInfo) {
       document.getElementById("pvp-respawn-screen").style.display = "none";
       requestCanvasPointerLock();
 
-      player.respawnAtRandomPoint();
+      player.respawnAtTeamBase(networkManager.myTeam);
       networkManager.sendRespawnEvent(player.getPosition());
     }
   }, 1000);
@@ -499,17 +640,59 @@ function handleRemotePlayerDeath(data) {
   remotePlayerManager.setRemoteDead(data.victimId);
 }
 
-function showPvPVictory(winnerName) {
+function showPvPVictory(winnerName, isLastStanding = false) {
   gameRunning = false;
+  tdmManager.stopMatch();
   document.exitPointerLock();
-  document.getElementById("pvp-victory-screen").style.display = "flex";
-  document.getElementById("pvp-winner-name").textContent = winnerName.toUpperCase();
+
+  const victoryScreen = document.getElementById("pvp-victory-screen");
+  const banner = document.getElementById("pvp-winner-banner");
+  const reason = document.getElementById("pvp-match-reason");
+  const scRed = document.getElementById("sc-red-score");
+  const scBlue = document.getElementById("sc-blue-score");
+  const scBody = document.getElementById("sc-body");
+
+  if (banner) banner.textContent = `${winnerName.toUpperCase()}!`;
+  if (reason) {
+    if (isLastStanding) {
+      reason.textContent = "ALL OPPONENTS DISCONNECTED — MATCH OVER";
+    } else {
+      reason.textContent = `TARGET OF ${networkManager.targetKills} KILLS REACHED`;
+    }
+  }
+
+  // Recalculate team scores
+  const scores = tdmManager.recalculateTeamScores(networkManager.roster);
+  if (scRed) scRed.textContent = scores.red;
+  if (scBlue) scBlue.textContent = scores.blue;
+
+  // Render final player breakdown
+  if (scBody) {
+    scBody.innerHTML = "";
+    const sorted = Object.values(networkManager.roster).sort((a, b) => (b.score || 0) - (a.score || 0));
+    for (const p of sorted) {
+      const tr = document.createElement("tr");
+      const teamLabel = p.team === "red" ? '<span style="color:#ef4444;font-weight:bold;">🔴 RED</span>' : '<span style="color:#38bdf8;font-weight:bold;">🔵 BLUE</span>';
+      tr.innerHTML = `
+        <td>${teamLabel}</td>
+        <td>${p.name} ${p.isHost ? '<span style="color:#f59e0b;font-size:12px;">[HOST]</span>' : ''}</td>
+        <td style="text-align:center;color:#22c55e;">${p.kills || 0}</td>
+        <td style="text-align:center;color:#ef4444;">${p.deaths || 0}</td>
+        <td style="text-align:right;font-weight:bold;">${p.score || 0}</td>
+      `;
+      scBody.appendChild(tr);
+    }
+  }
+
+  if (victoryScreen) victoryScreen.style.display = "flex";
 }
 
 function showLobbyAlert(msg, color = "#22c55e") {
   const el = document.getElementById("lobby-alert");
-  el.style.color = color;
-  el.textContent = msg;
+  if (el) {
+    el.style.color = color;
+    el.textContent = msg;
+  }
 }
 
 function showLobbyError(msg) {
@@ -573,6 +756,11 @@ function goToHome() {
     document.exitPointerLock();
   }
   if (networkManager) networkManager.disconnect();
+  if (sceneManager) sceneManager.setPvPMode(false);
+  if (tdmManager) tdmManager.stopMatch();
+  if (tdmMapBuilder) tdmMapBuilder.destroy();
+  if (remotePlayerManager) remotePlayerManager.clearAll();
+
   document.getElementById("paused-screen").style.display = "none";
   document.getElementById("gameover-screen").style.display = "none";
   document.getElementById("pvp-victory-screen").style.display = "none";
@@ -598,6 +786,9 @@ function showGameOver() {
 }
 
 function onPointerLock() {
+  const isMobile = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+  if (isMobile) return; // Pointer lock does not apply to touch mobile
+
   const canvas = document.getElementById("canvas");
   if (document.pointerLockElement === canvas) {
     gamePaused = false;
@@ -607,7 +798,9 @@ function onPointerLock() {
     }
   } else if (gameRunning && !gamePaused && !player.isDead) {
     if (document.getElementById("pvp-victory-screen").style.display === "none" &&
-      document.getElementById("gameover-screen").style.display === "none") {
+      document.getElementById("gameover-screen").style.display === "none" &&
+      document.getElementById("paused-screen").style.display === "none" &&
+      document.getElementById("settings-screen").style.display === "none") {
       document.getElementById("click-to-lock-overlay").style.display = "flex";
     }
   }
@@ -651,6 +844,8 @@ function animate() {
   // Network position state broadcast at ~20Hz (every 0.05s) & match timer
   if (gameMode === "pvp") {
     networkManager.updateMatchTimer(delta);
+    tdmManager.matchTime = networkManager.matchTime;
+    tdmManager.updateHUD();
     netSendTimer += delta;
     if (netSendTimer >= 0.05) {
       netSendTimer = 0;

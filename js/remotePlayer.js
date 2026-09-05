@@ -132,49 +132,49 @@ class RemotePlayer {
   }
 
   _buildSoldierMesh() {
-    // Saturated Player Tactical Attire (Vivid Cyan Shirt, Golden Vest, Indigo Jeans)
-    const shirtMat = new THREE.MeshLambertMaterial({ color: 0x0284c7 }); // Vivid Cyan Teal
-    const vestMat = new THREE.MeshLambertMaterial({ color: 0xeab308 }); // Bright Golden Tactical Vest
-    const trimMat = new THREE.MeshLambertMaterial({ color: 0x1e1b4b }); // Deep Navy Trim
-    const pantsMat = new THREE.MeshLambertMaterial({ color: 0x4338ca }); // Saturated Indigo Jeans
-    const skinMat = new THREE.MeshLambertMaterial({ color: 0xfbbf24 }); // Warm Minecraft Steve Skin
-    const visorMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 }); // Cyan Visor Glow
+    // Saturated Player Tactical Attire (Default Neutral / Crimson / Cobalt)
+    this.vestMat = new THREE.MeshLambertMaterial({ color: 0xeab308 }); // Bright Golden Tactical Vest
+    this.shirtMat = new THREE.MeshLambertMaterial({ color: 0x0284c7 }); // Vivid Cyan Teal
+    this.trimMat = new THREE.MeshLambertMaterial({ color: 0x1e1b4b }); // Deep Navy Trim
+    this.pantsMat = new THREE.MeshLambertMaterial({ color: 0x4338ca }); // Saturated Indigo Jeans
+    this.skinMat = new THREE.MeshLambertMaterial({ color: 0xfbbf24 }); // Warm Minecraft Steve Skin
+    this.visorMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 }); // Cyan Visor Glow
     const gunMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
 
-    // Torso (Golden Armor Vest)
-    this.body = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.95, 0.38), vestMat);
+    // Torso (Armor Vest)
+    this.body = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.95, 0.38), this.vestMat);
     this.body.position.y = 0.95;
     this.body.castShadow = true;
     this.group.add(this.body);
 
     // Torso Shirt Base & Plate Detail
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.42), shirtMat);
-    plate.position.y = 0.95;
-    this.group.add(plate);
+    this.plate = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.42), this.shirtMat);
+    this.plate.position.y = 0.95;
+    this.group.add(this.plate);
 
     // Head
-    this.head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), skinMat);
+    this.head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), this.skinMat);
     this.head.position.set(0, 1.6, 0);
     this.head.castShadow = true;
     this.group.add(this.head);
 
     // Tactical Helmet
-    const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.22, 0.44), trimMat);
-    helmet.position.set(0, 1.75, 0);
-    this.group.add(helmet);
+    this.helmet = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.22, 0.44), this.trimMat);
+    this.helmet.position.set(0, 1.75, 0);
+    this.group.add(this.helmet);
 
     // Visor
-    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.08, 0.08), visorMat);
-    visor.position.set(0, 1.63, 0.2);
-    this.group.add(visor);
+    this.visor = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.08, 0.08), this.visorMat);
+    this.visor.position.set(0, 1.63, 0.2);
+    this.group.add(this.visor);
 
-    // Arms & Weapon (Vivid Cyan Sleeves)
-    this.armL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.75, 0.2), shirtMat);
+    // Arms & Weapon
+    this.armL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.75, 0.2), this.shirtMat);
     this.armL.position.set(-0.42, 0.95, 0.1);
     this.armL.rotation.x = -0.7;
     this.group.add(this.armL);
 
-    this.armR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.75, 0.2), shirtMat);
+    this.armR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.75, 0.2), this.shirtMat);
     this.armR.position.set(0.42, 0.95, 0.1);
     this.armR.rotation.x = -0.7;
     this.group.add(this.armR);
@@ -184,13 +184,13 @@ class RemotePlayer {
     rifle.position.set(0.2, 0.9, 0.35);
     this.group.add(rifle);
 
-    // Legs (Indigo Jeans)
-    this.legL = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.85, 0.24), pantsMat);
+    // Legs
+    this.legL = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.85, 0.24), this.pantsMat);
     this.legL.position.set(-0.18, 0.42, 0);
     this.legL.castShadow = true;
     this.group.add(this.legL);
 
-    this.legR = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.85, 0.24), pantsMat);
+    this.legR = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.85, 0.24), this.pantsMat);
     this.legR.position.set(0.18, 0.42, 0);
     this.legR.castShadow = true;
     this.group.add(this.legR);
@@ -203,7 +203,28 @@ class RemotePlayer {
     this.muzzleFlash.position.set(0.2, 0.9, 0.75);
     this.group.add(this.muzzleFlash);
 
+    this.team = null;
     this._animTime = 0;
+  }
+
+  setTeam(team) {
+    if (this.team === team) return;
+    this.team = team;
+
+    if (team === "red") {
+      this.vestMat.color.setHex(0xd92d20); // Bright Crimson
+      this.shirtMat.color.setHex(0x7f1d1d); // Deep Crimson
+      this.trimMat.color.setHex(0x450a0a); // Dark Red Trim
+      this.pantsMat.color.setHex(0x1f2937); // Charcoal
+      this.visorMat.color.setHex(0xf87171); // Red Visor Glow
+    } else if (team === "blue") {
+      this.vestMat.color.setHex(0x2563eb); // Bright Cobalt
+      this.shirtMat.color.setHex(0x1e3a8a); // Deep Cobalt
+      this.trimMat.color.setHex(0x172554); // Dark Blue Trim
+      this.pantsMat.color.setHex(0x1e1b4b); // Indigo
+      this.visorMat.color.setHex(0x38bdf8); // Cyan Visor Glow
+    }
+    this.updateNameTag(this.hp || 100);
   }
 
   _buildNameTagCanvas() {
@@ -223,20 +244,27 @@ class RemotePlayer {
   }
 
   updateNameTag(hp = 100) {
+    this.hp = hp;
     const ctx = this.canvasCtx;
     ctx.clearRect(0, 0, 256, 64);
 
     // Background pill
-    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
     ctx.beginPath();
     ctx.roundRect(10, 10, 236, 44, 6);
     ctx.fill();
 
-    // Name Text
-    ctx.font = "bold 18px monospace";
-    ctx.fillStyle = "#60a5fa";
+    // Border according to team
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = this.team === "red" ? "#ef4444" : this.team === "blue" ? "#3b82f6" : "#4ade80";
+    ctx.stroke();
+
+    // Team prefix & name
+    const teamPrefix = this.team === "red" ? "🔴 " : this.team === "blue" ? "🔵 " : "";
+    ctx.font = "bold 17px monospace";
+    ctx.fillStyle = this.team === "red" ? "#f87171" : this.team === "blue" ? "#60a5fa" : "#facc15";
     ctx.textAlign = "center";
-    ctx.fillText(this.name, 128, 30);
+    ctx.fillText(`${teamPrefix}${this.name}`, 128, 30);
 
     // Health Bar Line
     const width = Math.max(0, (hp / 100) * 200);
@@ -247,6 +275,9 @@ class RemotePlayer {
   }
 
   setTargetTransform(data) {
+    if (data.team) {
+      this.setTeam(data.team);
+    }
     if (data.pos) {
       // Subtract 1.75 (PLAYER_HEIGHT) so remote soldier feet rest on terrain ground level
       this.targetPos.set(data.pos.x, data.pos.y - 1.75, data.pos.z);
@@ -271,6 +302,15 @@ class RemotePlayer {
     // Smooth Lerp Position & Yaw Orientation
     this.group.position.lerp(this.targetPos, 0.25);
     this.group.rotation.y = THREE.MathUtils.lerp(this.group.rotation.y, this.targetYaw, 0.25);
+
+    // Dynamic Distance-Scaled Nametag (Highly visible from across arena)
+    const cam = window._sceneManager?.camera;
+    if (cam && this.nameSprite) {
+      const dist = this.group.position.distanceTo(cam.position);
+      const scaleFactor = Math.max(1.0, Math.min(3.2, 0.9 + dist * 0.045));
+      this.nameSprite.scale.set(2.4 * scaleFactor, 0.6 * scaleFactor, 1.0);
+      this.nameSprite.position.y = 2.1 + (scaleFactor - 1.0) * 0.45;
+    }
 
     // Legs animation when moving
     if (this.isMoving) {

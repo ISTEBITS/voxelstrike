@@ -80,6 +80,13 @@ const WEAPONS = {
   },
 };
 
+const WEAPON_IMAGES = {
+  assault_rifle: "assets/gun-icons/m4.png",
+  smg: "assets/gun-icons/smg.png",
+  shotgun: "assets/gun-icons/dmr.png",
+  sniper: "assets/gun-icons/dmr.png",
+};
+
 export class ShootingSystem {
   constructor(scene, player, enemySystem) {
     this.scene = scene;
@@ -138,6 +145,15 @@ export class ShootingSystem {
     this._domAmmoReserve = document.getElementById("ammo-reserve");
     this._domWeaponName = document.getElementById("weapon-name");
     this._domSprintIndicator = document.getElementById("sprint-indicator");
+
+    // Cache Center Bottom Active Weapon & Ammo HUD references
+    this._domActiveGunImg = document.getElementById("active-gun-img");
+    this._domActiveGunName = document.getElementById("active-gun-name");
+    this._domActiveAmmoCur = document.getElementById("active-ammo-cur");
+    this._domActiveAmmoRes = document.getElementById("active-ammo-res");
+    this._domTouchReloadBtn = document.getElementById("btn-touch-reload");
+    this._domTouchReloadRing = document.getElementById("touch-reload-ring");
+    this._reloadStartAmmo = 0;
 
     this._buildAllGunModels();
     this._buildMuzzleFlash();
@@ -414,11 +430,18 @@ export class ShootingSystem {
       const hitPlayer = window._remotePlayerManager?.raycastRemotePlayers(origin, dir);
 
       if (hitPlayer && (!hitZombie || hitPlayer.distance < hitZombie.distance)) {
-        const dmg = def.damage * (hitPlayer.damageMultiplier || 1.0);
-        this._spawnBloodEffect(hitPlayer.point);
-        anyHit = true;
-        if (window._networkManager) {
-          window._networkManager.sendHitPlayerEvent(hitPlayer.peerId, dmg, hitPlayer.bodyPart);
+        // Prevent Friendly Fire in TDM
+        const myTeam = window._networkManager?.myTeam;
+        const targetTeam = window._networkManager?.roster[hitPlayer.peerId]?.team;
+        const isFriendly = myTeam && targetTeam && myTeam === targetTeam;
+
+        if (!isFriendly) {
+          const dmg = def.damage * (hitPlayer.damageMultiplier || 1.0);
+          this._spawnBloodEffect(hitPlayer.point);
+          anyHit = true;
+          if (window._networkManager) {
+            window._networkManager.sendHitPlayerEvent(hitPlayer.peerId, dmg, hitPlayer.bodyPart);
+          }
         }
       } else if (hitZombie) {
         const killed = this.enemySystem.hitEnemy(hitZombie.enemy, def.damage);
@@ -528,7 +551,11 @@ export class ShootingSystem {
     if (st.isReloading || st.reserve <= 0) return;
     st.isReloading = true;
     st.reloadTimer = this._currentDef.reloadTime;
-    this._domReloadContainer.style.opacity = "1";
+    this._reloadStartAmmo = st.ammo;
+    if (this._domReloadContainer) this._domReloadContainer.style.opacity = "1";
+    if (this._domTouchReloadBtn) this._domTouchReloadBtn.classList.add("reloading");
+    if (this._domTouchReloadRing) this._domTouchReloadRing.style.strokeDashoffset = "163.36px";
+    if (this._domActiveAmmoCur) this._domActiveAmmoCur.classList.add("reloading");
     this.audio?.play("reload");
   }
 
@@ -539,18 +566,34 @@ export class ShootingSystem {
     st.ammo += take;
     st.reserve -= take;
     st.isReloading = false;
-    this._domReloadContainer.style.opacity = "0";
+    if (this._domReloadContainer) this._domReloadContainer.style.opacity = "0";
+    if (this._domTouchReloadBtn) this._domTouchReloadBtn.classList.remove("reloading");
+    if (this._domActiveAmmoCur) this._domActiveAmmoCur.classList.remove("reloading");
     this._updateAmmoUI();
   }
 
   _updateAmmoUI() {
     const st = this._currentState;
-    this._domAmmoValue.textContent = st.ammo;
-    this._domAmmoReserve.textContent = "/ " + st.reserve;
+    const def = this._currentDef;
+    if (this._domAmmoValue) this._domAmmoValue.textContent = st.ammo;
+    if (this._domAmmoReserve) this._domAmmoReserve.textContent = "/ " + st.reserve;
+
+    if (this._domActiveAmmoCur) {
+      this._domActiveAmmoCur.textContent = st.ammo;
+      this._domActiveAmmoCur.style.color = st.ammo <= Math.ceil(def.magSize * 0.25) ? "#ef4444" : "#ffffff";
+    }
+    if (this._domActiveAmmoRes) {
+      this._domActiveAmmoRes.textContent = st.reserve;
+    }
   }
 
   _updateWeaponUI() {
     if (this._domWeaponName) this._domWeaponName.textContent = this._currentDef.name;
+    if (this._domActiveGunName) this._domActiveGunName.textContent = this._currentDef.name;
+    if (this._domActiveGunImg) {
+      this._domActiveGunImg.src = WEAPON_IMAGES[this.currentWeaponKey] || "assets/gun-icons/m4.png";
+      this._domActiveGunImg.alt = this._currentDef.name;
+    }
     for (const [key, def] of Object.entries(WEAPONS)) {
       const slot = document.getElementById(`weapon-slot-${def.key}`);
       if (slot) slot.classList.toggle("active", key === this.currentWeaponKey);
@@ -608,8 +651,17 @@ export class ShootingSystem {
 
     if (st.isReloading) {
       st.reloadTimer -= delta;
-      const prog = 1 - st.reloadTimer / def.reloadTime;
-      this._domReloadBar.style.width = (prog * 100) + "%";
+      const prog = Math.min(1, Math.max(0, 1 - st.reloadTimer / def.reloadTime));
+      const take = Math.min(def.magSize - this._reloadStartAmmo, st.reserve);
+      const targetAmmo = this._reloadStartAmmo + take;
+      const fillAmt = Math.min(targetAmmo, Math.floor(this._reloadStartAmmo + (targetAmmo - this._reloadStartAmmo) * prog));
+      
+      if (this._domActiveAmmoCur) this._domActiveAmmoCur.textContent = fillAmt;
+      if (this._domAmmoValue) this._domAmmoValue.textContent = fillAmt;
+      if (this._domTouchReloadRing) {
+        this._domTouchReloadRing.style.strokeDashoffset = (163.36 * (1 - prog)) + "px";
+      }
+      if (this._domReloadBar) this._domReloadBar.style.width = (prog * 100) + "%";
       if (st.reloadTimer <= 0) this._finishReload();
     }
 

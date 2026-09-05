@@ -113,6 +113,28 @@ export class Player {
     this.onGround = true;
   }
 
+  respawnAtTeamBase(team = "red") {
+    const safeTeam = team === "blue" ? "blue" : "red";
+    if (window._tdmManager) {
+      const spawn = window._tdmManager.getTeamSpawnPosition(safeTeam);
+      this.camera.position.set(spawn.x, spawn.y, spawn.z);
+      this._yaw = spawn.yaw;
+      this._pitch = 0;
+      this._updateCamera();
+    } else {
+      // Fallback
+      const z = safeTeam === "red" ? -28 : 28;
+      this.camera.position.set((Math.random() - 0.5) * 6, PLAYER_HEIGHT, z);
+      this._yaw = safeTeam === "red" ? 0 : Math.PI;
+      this._pitch = 0;
+      this._updateCamera();
+    }
+    this.velocity.set(0, 0, 0);
+    this.health = MAX_HEALTH;
+    this.isDead = false;
+    this.onGround = true;
+  }
+
   _updateMovement(delta) {
     const k = this._keys;
     this.isSprinting = k["ShiftLeft"] || k["ShiftRight"];
@@ -151,6 +173,10 @@ export class Player {
     pos.x += this.velocity.x * delta;
     pos.z += this.velocity.z * delta;
     pos.y += this.velocity.y * delta;
+
+    if (window._tdmManager && window._tdmManager.isMatchActive) {
+      window._tdmManager.clampPositionToArena(pos);
+    }
 
     this._resolveCollisions(pos);
 

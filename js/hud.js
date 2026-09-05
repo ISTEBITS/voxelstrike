@@ -74,22 +74,24 @@ export class HUD {
     const roundedPct = (pct * 100 + 0.5) | 0;
     if (roundedPct !== prev.healthPct) {
       prev.healthPct = roundedPct;
-      el.healthBar.style.width = roundedPct + "%";
+      if (el.healthBar) el.healthBar.style.width = roundedPct + "%";
 
       const zone = pct > 0.5 ? 2 : pct > 0.25 ? 1 : 0;
       if (zone !== prev.healthZone) {
         prev.healthZone = zone;
-        el.healthBar.style.background = zone === 2
-          ? "linear-gradient(90deg,#22c55e,#86efac)"
-          : zone === 1
-            ? "linear-gradient(90deg,#f59e0b,#fcd34d)"
-            : "linear-gradient(90deg,#ef4444,#f87171)";
+        if (el.healthBar) {
+          el.healthBar.style.background = zone === 2
+            ? "linear-gradient(90deg,#22c55e,#86efac)"
+            : zone === 1
+              ? "linear-gradient(90deg,#f59e0b,#fcd34d)"
+              : "linear-gradient(90deg,#ef4444,#f87171)";
+        }
       }
 
       const txt = Math.ceil(hp) + " / " + this.player.maxHealth;
       if (txt !== prev.healthText) {
         prev.healthText = txt;
-        el.healthValue.textContent = txt;
+        if (el.healthValue) el.healthValue.textContent = txt;
       }
     }
 
@@ -137,11 +139,11 @@ export class HUD {
       }
 
       const roster = window._networkManager?.roster || {};
-      const sorted = Object.values(roster).sort((a, b) => b.kills - a.kills || b.score - a.score);
+      const sorted = Object.values(roster).sort((a, b) => (b.kills || 0) - (a.kills || 0) || (b.score || 0) - (a.score || 0));
       const leader = sorted[0];
-      const targetKills = window._networkManager?.targetKills || 15;
+      const targetKills = window._tdmManager?.targetKills || window._networkManager?.targetKills || 20;
       const leadText = leader
-        ? "LEAD: " + leader.name + " (" + leader.kills + "/" + targetKills + " KILLS)"
+        ? "LEAD: " + leader.name + " (" + (leader.kills || 0) + "/" + targetKills + " KILLS)"
         : "PvP DEATHMATCH";
       if (leadText !== prev.enemyCount) {
         prev.enemyCount = leadText;
@@ -154,7 +156,7 @@ export class HUD {
         prev.scoreLabel = "K/D";
         el.scoreLabel.textContent = "KILLS / DEATHS";
       }
-      const kdText = myStats.kills + " / " + myStats.deaths;
+      const kdText = (myStats.kills || 0) + " / " + (myStats.deaths || 0);
       if (kdText !== prev.scoreValue) {
         prev.scoreValue = kdText;
         el.scoreValue.textContent = kdText;
@@ -205,7 +207,7 @@ export class HUD {
     if (!feed) return;
     const el = document.createElement("div");
     el.className = "kill-notification";
-    el.style.borderColor = "#22c55e";
+    el.style.borderLeftColor = "#22c55e";
     el.style.color = "#86efac";
     el.textContent = "✚ HEALTH PACK RESTORED (+" + amount + "% HP)";
     feed.appendChild(el);
@@ -231,6 +233,8 @@ export class HUD {
     const feed = this._el.killFeed;
     const el = document.createElement("div");
     el.className = "kill-notification";
+    el.style.borderLeftColor = "#ff5555";
+    el.style.color = "#ff5555";
     el.textContent = "✕ " + killerName + " ELIMINATED " + victimName;
     feed.appendChild(el);
     setTimeout(() => {
@@ -239,18 +243,15 @@ export class HUD {
     while (feed.children.length > 5) feed.removeChild(feed.firstChild);
   }
 
-  addPlayerLeftNotification(playerName) {
-    const feed = this._el.killFeed;
-    const el = document.createElement("div");
-    el.className = "kill-notification";
-    el.style.borderColor = "#f59e0b";
-    el.style.color = "#fcd34d";
-    el.textContent = "⚠️ " + playerName + " HAS LEFT THE MATCH";
-    feed.appendChild(el);
-    setTimeout(() => {
-      if (el.parentNode) el.parentNode.removeChild(el);
-    }, 3500);
-    while (feed.children.length > 5) feed.removeChild(feed.firstChild);
+  showSystemToast(msg, duration = 3500) {
+    const toast = document.getElementById("pvp-system-toast");
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.style.display = "block";
+    if (this._toastTimer) clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => {
+      toast.style.display = "none";
+    }, duration);
   }
 
   updatePvPScoreboard(roster) {
@@ -258,17 +259,19 @@ export class HUD {
     if (!tbody) return;
     tbody.innerHTML = "";
 
-    const sorted = Object.values(roster).sort((a, b) => b.score - a.score);
+    const sorted = Object.values(roster).sort((a, b) => (b.score || 0) - (a.score || 0));
     const myId = window._networkManager?.myPeerId;
 
     for (const p of sorted) {
       const tr = document.createElement("tr");
       if (p.peerId === myId) tr.className = "me";
+      const teamLabel = p.team === "red" ? '<span style="color:#ef4444;font-weight:bold;">🔴 RED</span>' : '<span style="color:#38bdf8;font-weight:bold;">🔵 BLUE</span>';
       tr.innerHTML = `
-        <td>${p.name} ${p.isHost ? '<span style="color:#f59e0b;font-size:10px;">[HOST]</span>' : ''}</td>
-        <td style="text-align:center;color:#22c55e;">${p.kills}</td>
-        <td style="text-align:center;color:#ef4444;">${p.deaths}</td>
-        <td style="text-align:right;font-weight:bold;">${p.score}</td>
+        <td>${teamLabel}</td>
+        <td>${p.name} ${p.isHost ? '<span style="color:#f59e0b;font-size:12px;">[HOST]</span>' : ''}</td>
+        <td style="text-align:center;color:#22c55e;">${p.kills || 0}</td>
+        <td style="text-align:center;color:#ef4444;">${p.deaths || 0}</td>
+        <td style="text-align:right;font-weight:bold;">${p.score || 0}</td>
       `;
       tbody.appendChild(tr);
     }

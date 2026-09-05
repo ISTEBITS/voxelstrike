@@ -10,6 +10,11 @@ export class SceneManager {
     this.isMobile = isMobile;
     this.scene = new THREE.Scene();
     this.collidables = [];
+    this.soloCollidables = [];
+    this.soloGroup = new THREE.Group();
+    this.scene.add(this.soloGroup);
+    this.isPvPMode = false;
+
     this._buildCamera();
     this._buildSky();
     this._buildLighting();
@@ -17,6 +22,27 @@ export class SceneManager {
     this._buildStructures();
     this._buildVegetation();
     this._buildBoundaryWalls();
+
+    // Cache solo collidables
+    this.soloCollidables = [...this.collidables];
+  }
+
+  setPvPMode(isPvP) {
+    this.isPvPMode = isPvP;
+    if (this.soloGroup) {
+      this.soloGroup.visible = !isPvP;
+    }
+    if (this.terrain) {
+      this.terrain.visible = !isPvP;
+    }
+    if (isPvP) {
+      this.collidables.length = 0;
+    } else {
+      this.collidables.length = 0;
+      for (const c of this.soloCollidables) {
+        this.collidables.push(c);
+      }
+    }
   }
 
   _buildCamera() {
@@ -199,7 +225,7 @@ export class SceneManager {
       const py = this.getTerrainHeight(px, pz) + 0.02;
       pm.position.set(px, py, pz);
       pm.receiveShadow = true;
-      this.scene.add(pm);
+      this.soloGroup.add(pm);
     }
   }
 
@@ -223,6 +249,7 @@ export class SceneManager {
   }
 
   getTerrainHeight(x, z) {
+    if (this.isPvPMode) return 0;
     if (this._hGrid) {
       const gx = (x + this._hHalf) / this._hStep;
       const gz = (z + this._hHalf) / this._hStep;
@@ -298,7 +325,7 @@ export class SceneManager {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.userData.isStatic = true;
-    this.scene.add(mesh);
+    this.soloGroup.add(mesh);
 
     // Textured Warm Oak Wood Plank Trim & Roof
     const roofMat = new THREE.MeshLambertMaterial({ map: this.woodTexture });
@@ -309,7 +336,7 @@ export class SceneManager {
     roof.position.set(cx, gy + h + 0.25, cz);
     roof.castShadow = true;
     roof.userData.isStatic = true;
-    this.scene.add(roof);
+    this.soloGroup.add(roof);
 
     // Add Torches with PointLights on House Walls
     this._addBuildingTorches(cx, cz, w, h, d, gy);
@@ -353,7 +380,7 @@ export class SceneManager {
       light.position.set(0.08, 0.35, 0);
       torchGroup.add(light);
 
-      this.scene.add(torchGroup);
+      this.soloGroup.add(torchGroup);
     });
   }
 
@@ -373,13 +400,13 @@ export class SceneManager {
     base.position.set(cx, gy + towerH / 2, cz);
     base.castShadow = true;
     base.userData.isStatic = true;
-    this.scene.add(base);
+    this.soloGroup.add(base);
 
     const top = new THREE.Mesh(new THREE.BoxGeometry(7, 1, 7), mat);
     top.position.set(cx, gy + towerH + 0.5, cz);
     top.castShadow = true;
     top.userData.isStatic = true;
-    this.scene.add(top);
+    this.soloGroup.add(top);
 
     const box = new THREE.Box3(
       new THREE.Vector3(cx - 3.5, gy, cz - 3.5),
@@ -390,12 +417,11 @@ export class SceneManager {
 
   _addBarriers() {
     const barrierMat = new THREE.MeshLambertMaterial({ color: 0x6b7280 });
-    // [cx, cz, w, h, d, ry]
     const barriers = [
       [20, 5, 8, 1.2, 0.6, 0],
       [-20, 5, 8, 1.2, 0.6, 0],
       [0, 15, 0.6, 1.2, 8, 0],
-      [15, -10, 5, 1.2, 0.6, 0], // removed rotation to keep AABB accurate
+      [15, -10, 5, 1.2, 0.6, 0],
       [-15, -10, 5, 1.2, 0.6, 0],
       [30, 30, 6, 1.5, 0.6, 0],
       [-30, 30, 6, 1.5, 0.6, 0],
@@ -404,13 +430,11 @@ export class SceneManager {
     barriers.forEach(([cx, cz, w, h, d]) => {
       const gy = this.getTerrainHeight(cx, cz);
       const g = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), barrierMat);
-      // Place mesh so bottom sits on terrain
       g.position.set(cx, gy + h / 2, cz);
       g.castShadow = true;
       g.userData.isStatic = true;
-      this.scene.add(g);
+      this.soloGroup.add(g);
 
-      // Collision box snapped to terrain
       const box = new THREE.Box3(
         new THREE.Vector3(cx - w / 2, gy, cz - d / 2),
         new THREE.Vector3(cx + w / 2, gy + h + 0.1, cz + d / 2),
@@ -479,7 +503,7 @@ export class SceneManager {
     trunkInst.instanceMatrix.needsUpdate = true;
     leafInst.instanceMatrix.needsUpdate = true;
     leaf2Inst.instanceMatrix.needsUpdate = true;
-    this.scene.add(trunkInst, leafInst, leaf2Inst);
+    this.soloGroup.add(trunkInst, leafInst, leaf2Inst);
 
     // Minecraft Cobblestone Boulders
     const rockGeo = new THREE.BoxGeometry(1.0, 1.0, 1.0);
@@ -499,7 +523,7 @@ export class SceneManager {
     }
     rockInst.instanceMatrix.needsUpdate = true;
     rockInst.castShadow = !this.isMobile;
-    this.scene.add(rockInst);
+    this.soloGroup.add(rockInst);
 
     this._buildGrass();
   }
@@ -527,7 +551,7 @@ export class SceneManager {
       inst.setMatrixAt(i * 2 + 1, dummy.matrix);
     }
     inst.instanceMatrix.needsUpdate = true;
-    this.scene.add(inst);
+    this.soloGroup.add(inst);
   }
 
   _isInsideStructure(x, z) {
