@@ -19,6 +19,9 @@ export class EnemySystem {
     this.collidables = collidables;
     this.enemies = [];
     this._raycaster = new THREE.Raycaster();
+    this._toPlayer = new THREE.Vector3();
+    this._frameCount = 0;
+    this._cachedCam = null;
     this._buildSharedAssets();
   }
 
@@ -233,6 +236,8 @@ export class EnemySystem {
   }
 
   update(delta, playerPos) {
+    this._frameCount++;
+    this._cachedCam = window._sceneManager?.camera ?? null;
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       if (!e.isAlive) {
@@ -244,19 +249,16 @@ export class EnemySystem {
         continue;
       }
       this._updateAI(e, delta, playerPos);
-      this._updateAnimation(e, delta);
-      this._updateHealthBar(e, playerPos);
+      this._updateAnimation(e, delta, playerPos);
+      this._updateHealthBar(e, delta);
       this._updateFlash(e, delta);
     }
   }
 
   _updateAI(e, delta, playerPos) {
     const pos = e.group.position;
-    const toPlayer = new THREE.Vector3(
-      playerPos.x - pos.x,
-      0,
-      playerPos.z - pos.z,
-    );
+    const toPlayer = this._toPlayer;
+    toPlayer.set(playerPos.x - pos.x, 0, playerPos.z - pos.z);
     const dist = toPlayer.length();
     if (dist < 0.1) return;
     toPlayer.normalize();
@@ -372,12 +374,12 @@ export class EnemySystem {
     }
   }
 
-  _updateAnimation(e, delta) {
+  _updateAnimation(e, delta, playerPos) {
     const pos = e.group.position;
-    const playerPos = window._player?.getPosition();
-    if (!playerPos) return;
-    const dist = pos.distanceTo(playerPos);
-    const moving = dist > ATTACK_RANGE;
+    const dx = playerPos.x - pos.x;
+    const dz = playerPos.z - pos.z;
+    const distSq = dx * dx + dz * dz;
+    const moving = distSq > ATTACK_RANGE * ATTACK_RANGE;
 
     if (moving) {
       // Zombie shamble: uneven, lurching gait
@@ -402,18 +404,21 @@ export class EnemySystem {
     }
   }
 
-  _updateHealthBar(e, playerPos) {
-    const cam = window._sceneManager?.camera ?? window._player?.camera;
-    if (cam) {
-      e.hbFg.lookAt(cam.position);
-      e.hbBgMesh.lookAt(cam.position);
+  _updateHealthBar(e, delta) {
+    // Billboard lookAt is expensive (matrix math) — throttle to every 4th frame
+    if ((this._frameCount & 3) === 0 && this._cachedCam) {
+      e.hbFg.lookAt(this._cachedCam.position);
+      e.hbBgMesh.lookAt(this._cachedCam.position);
     }
     const frac = e.hp / e.maxHp;
     e.hbFg.scale.x = Math.max(0, frac);
     e.hbFg.position.x = (frac - 1) * 0.45;
-    if (frac > 0.5) e.hbFg.material.color.setHex(0x22c55e);
-    else if (frac > 0.25) e.hbFg.material.color.setHex(0xf59e0b);
-    else e.hbFg.material.color.setHex(0xef4444);
+    // Only update color when HP zone changes
+    const zone = frac > 0.5 ? 2 : frac > 0.25 ? 1 : 0;
+    if (e._hpZone !== zone) {
+      e._hpZone = zone;
+      e.hbFg.material.color.setHex(zone === 2 ? 0x22c55e : zone === 1 ? 0xf59e0b : 0xef4444);
+    }
   }
 
   _updateFlash(e, delta) {

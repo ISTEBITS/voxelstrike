@@ -129,6 +129,15 @@ export class ShootingSystem {
     this._bobTime = 0;
     this._adsAmount = 0;
     this._isADS = false;
+    this._prevSprinting = false;
+
+    // Cache DOM references
+    this._domReloadContainer = document.getElementById("reload-bar-container");
+    this._domReloadBar = document.getElementById("reload-bar");
+    this._domAmmoValue = document.getElementById("ammo-value");
+    this._domAmmoReserve = document.getElementById("ammo-reserve");
+    this._domWeaponName = document.getElementById("weapon-name");
+    this._domSprintIndicator = document.getElementById("sprint-indicator");
 
     this._buildAllGunModels();
     this._buildMuzzleFlash();
@@ -342,7 +351,7 @@ export class ShootingSystem {
     if (key === this.currentWeaponKey) return;
     if (this.ammoState[this.currentWeaponKey].isReloading) {
       this.ammoState[this.currentWeaponKey].isReloading = false;
-      document.getElementById("reload-bar-container").style.opacity = "0";
+      this._domReloadContainer.style.opacity = "0";
     }
     this.weaponModels[this.currentWeaponKey].visible = false;
     this.currentWeaponKey = key;
@@ -519,7 +528,7 @@ export class ShootingSystem {
     if (st.isReloading || st.reserve <= 0) return;
     st.isReloading = true;
     st.reloadTimer = this._currentDef.reloadTime;
-    document.getElementById("reload-bar-container").style.opacity = "1";
+    this._domReloadContainer.style.opacity = "1";
     this.audio?.play("reload");
   }
 
@@ -530,19 +539,18 @@ export class ShootingSystem {
     st.ammo += take;
     st.reserve -= take;
     st.isReloading = false;
-    document.getElementById("reload-bar-container").style.opacity = "0";
+    this._domReloadContainer.style.opacity = "0";
     this._updateAmmoUI();
   }
 
   _updateAmmoUI() {
     const st = this._currentState;
-    document.getElementById("ammo-value").textContent = st.ammo;
-    document.getElementById("ammo-reserve").textContent = `/ ${st.reserve}`;
+    this._domAmmoValue.textContent = st.ammo;
+    this._domAmmoReserve.textContent = "/ " + st.reserve;
   }
 
   _updateWeaponUI() {
-    const el = document.getElementById("weapon-name");
-    if (el) el.textContent = this._currentDef.name;
+    if (this._domWeaponName) this._domWeaponName.textContent = this._currentDef.name;
     for (const [key, def] of Object.entries(WEAPONS)) {
       const slot = document.getElementById(`weapon-slot-${def.key}`);
       if (slot) slot.classList.toggle("active", key === this.currentWeaponKey);
@@ -601,7 +609,7 @@ export class ShootingSystem {
     if (st.isReloading) {
       st.reloadTimer -= delta;
       const prog = 1 - st.reloadTimer / def.reloadTime;
-      document.getElementById("reload-bar").style.width = `${prog * 100}%`;
+      this._domReloadBar.style.width = (prog * 100) + "%";
       if (st.reloadTimer <= 0) this._finishReload();
     }
 
@@ -624,8 +632,11 @@ export class ShootingSystem {
     this.weaponCamera.quaternion.copy(this.player.camera.quaternion);
     this._updateWeaponTransform(delta);
 
-    const sprintEl = document.getElementById("sprint-indicator");
-    if (sprintEl) sprintEl.style.opacity = this.player.isSprinting ? "1" : "0";
+    const sprinting = this.player.isSprinting;
+    if (sprinting !== this._prevSprinting) {
+      this._prevSprinting = sprinting;
+      if (this._domSprintIndicator) this._domSprintIndicator.style.opacity = sprinting ? "1" : "0";
+    }
   }
 
   renderWeapon(renderer) {

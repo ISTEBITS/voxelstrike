@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://istebits.github.io/VOXELSTRIKE/" target="_blank">
+  <a href="https://istebits.github.io/voxelstrike/" target="_blank">
     <img src="https://img.shields.io/badge/🎮 Play%20Now-brightgreen?style=for-the-badge" alt="Play Now">
   </a>
 </p>
