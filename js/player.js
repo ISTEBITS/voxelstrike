@@ -91,6 +91,18 @@ export class Player {
     this._updateCamera();
   }
 
+  spawnSolo() {
+    const gy = (window._sceneManager?.getTerrainHeight(0, 0) ?? 0) + PLAYER_HEIGHT;
+    this.camera.position.set(0, gy, 0);
+    this.velocity.set(0, 0, 0);
+    this._yaw = 0;
+    this._pitch = 0;
+    this._updateCamera();
+    this.health = MAX_HEALTH;
+    this.isDead = false;
+    this.onGround = true;
+  }
+
   respawnAtRandomPoint() {
     const pt = SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
     const gy = (window._sceneManager?.getTerrainHeight(pt[0], pt[1]) ?? 0) + PLAYER_HEIGHT;
