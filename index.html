@@ -48,7 +48,7 @@
 
     /* Health Bar (Minecraft XP/Health Style) */
     #health-container {
-      position: absolute; bottom: 30px; left: 30px;
+      position: absolute; bottom: 25px; left: 160px;
     }
     #health-label {
       color: #aaaaaa; font-size: 16px; letter-spacing: 2px;
@@ -555,7 +555,7 @@
       pointer-events: auto; touch-action: none; z-index: 5;
     }
     #touch-buttons-group {
-      position: absolute; bottom: 25px; right: 25px;
+      position: absolute; bottom: 130px; right:90px;
       display: flex; flex-direction: column; gap: 12px; align-items: flex-end;
       pointer-events: auto; z-index: 10;
     }
@@ -571,12 +571,12 @@
       background-color: #ffaa00; color: #000000;
     }
     .btn-fire {
-      width: 76px !important; height: 76px !important; border-radius: 50% !important;
+      position: fixed; top: 48vh; right: 180px; width: 76px !important; height: 76px !important; border-radius: 50% !important;
       background-color: #b91c1c !important; color: #ffffff !important;
       box-shadow: inset 3px 3px 0px #ef4444, inset -3px -3px 0px #450a0a, 0 0 0 3px #ffaa00 !important;
     }
     #btn-touch-pause {
-      position: fixed; top: 15px; right: 15px; z-index: 30; pointer-events: auto;
+      position: fixed; top: 15px; right: 620px; z-index: 30; pointer-events: auto;
       width: 46px; height: 46px; border-radius: 8px;
       background-color: #4a4a4a; color: #fcfc54;
       border: 2px solid #000000;
@@ -589,7 +589,7 @@
       box-shadow: inset -2px -2px 0px #888888, inset 2px 2px 0px #222222, 0 0 0 2px #000000;
     }
     #btn-touch-settings {
-      position: fixed; top: 15px; right: 70px; z-index: 30; pointer-events: auto;
+      position: fixed; top: 15px; right: 680px; z-index: 30; pointer-events: auto;
       width: 46px; height: 46px; border-radius: 8px;
       background-color: #3b271d; color: #55ffff;
       border: 2px solid #000000;
